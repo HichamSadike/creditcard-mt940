@@ -1,0 +1,1 @@
+"""MT940 formatting module."""

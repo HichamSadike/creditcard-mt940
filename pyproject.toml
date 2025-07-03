@@ -1,0 +1,31 @@
+[project]
+name = "creditcard-mt940"
+version = "0.1.0"
+description = "Convert credit card transactions from CSV/PDF to MT940 format"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit>=1.28.0",
+    "pandas>=2.0.0",
+    "pdfplumber>=0.9.0",
+    "python-dateutil>=2.8.0",
+    "openpyxl>=3.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "mypy>=1.16.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.2",
+]
