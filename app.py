@@ -1,24 +1,223 @@
-"""Streamlit application for Credit Card to MT940 converter."""
+"""Streamlit application for Credit Card to MT940 converter with Numbr branding."""
 
 import streamlit as st
 import pandas as pd
-import io
 from datetime import datetime
 from decimal import Decimal
 
 from src.creditcard_mt940.processors.transaction_processor import TransactionProcessor
 
 
+def apply_numbr_styling():
+    """Apply Numbr branding styles."""
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Red+Hat+Text:wght@400;500;600;700&display=swap');
+    
+    /* Main app styling */
+    .main-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 2rem;
+        padding: 1rem 0;
+        border-bottom: 2px solid #0b0c67;
+    }
+    
+    .logo-container {
+        margin-right: 2rem;
+    }
+    
+    .logo {
+        width: 80px;
+        height: 80px;
+        border-radius: 8px;
+    }
+    
+    .title-container h1 {
+        font-family: 'Red Hat Text', sans-serif !important;
+        font-weight: 700 !important;
+        color: #0b0c67 !important;
+        margin: 0 !important;
+        font-size: 2.5rem !important;
+    }
+    
+    .subtitle {
+        font-family: 'Red Hat Text', sans-serif !important;
+        color: #666 !important;
+        font-size: 1.1rem !important;
+        margin-top: 0.5rem !important;
+    }
+    
+    /* Override Streamlit's default fonts */
+    .stApp {
+        font-family: 'Red Hat Text', sans-serif !important;
+    }
+    
+    /* Header styles */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Red Hat Text', sans-serif !important;
+        font-weight: 600 !important;
+        color: #0b0c67 !important;
+    }
+    
+    /* Sidebar styling */
+    .stSidebar {
+        background-color: #f8f9fa !important;
+        border-right: 2px solid #0b0c67 !important;
+    }
+    
+    .stSidebar > div {
+        padding-top: 2rem !important;
+    }
+    
+    .stSidebar h2 {
+        font-family: 'Red Hat Text', sans-serif !important;
+        font-weight: 600 !important;
+        color: #0b0c67 !important;
+        border-bottom: 2px solid #0b0c67 !important;
+        padding-bottom: 0.5rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    .stSidebar .stTextInput > div > div > input {
+        border: 1px solid #0b0c67 !important;
+        border-radius: 8px !important;
+        font-family: 'Red Hat Text', sans-serif !important;
+    }
+    
+    .stSidebar .stTextInput > div > div > input:focus {
+        border-color: #0b0c67 !important;
+        box-shadow: 0 0 0 2px rgba(11, 12, 103, 0.2) !important;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        background-color: #0b0c67 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-family: 'Red Hat Text', sans-serif !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 2rem !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stButton > button:hover {
+        background-color: #0a0b5a !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(11, 12, 103, 0.3) !important;
+    }
+    
+    /* Download button styling */
+    .stDownloadButton > button {
+        background-color: #0b0c67 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-family: 'Red Hat Text', sans-serif !important;
+        font-weight: 600 !important;
+    }
+    
+    /* File uploader styling */
+    .stFileUploader > div > div {
+        border: 2px dashed #0b0c67 !important;
+        border-radius: 12px !important;
+        background-color: #f8f9fa !important;
+    }
+    
+    /* Metrics styling */
+    .metric-container {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 12px;
+        border: 1px solid #e1e5e9;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Success/info message styling */
+    .stSuccess {
+        background-color: #d4edda !important;
+        border-color: #0b0c67 !important;
+        color: #155724 !important;
+        border-radius: 8px !important;
+    }
+    
+    .stInfo {
+        background-color: #e7f3ff !important;
+        border-color: #0b0c67 !important;
+        border-radius: 8px !important;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: #f8f9fa !important;
+        border-radius: 8px !important;
+        font-family: 'Red Hat Text', sans-serif !important;
+        font-weight: 600 !important;
+        color: #0b0c67 !important;
+    }
+    
+    /* Footer styling */
+    .footer {
+        margin-top: 3rem;
+        padding: 2rem 0;
+        border-top: 1px solid #e1e5e9;
+        text-align: center;
+        color: #666;
+        font-family: 'Red Hat Text', sans-serif !important;
+    }
+    
+    .footer a {
+        color: #0b0c67 !important;
+        text-decoration: none !important;
+        font-weight: 600 !important;
+    }
+    
+    .footer a:hover {
+        text-decoration: underline !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def render_header():
+    """Render the Numbr branded header."""
+    st.markdown("""
+    <div class="main-header">
+        <div class="logo-container">
+            <img src="https://numbr.nl/wp-content/uploads/Beeldmerk.jpg" class="logo" alt="Numbr Logo">
+        </div>
+        <div class="title-container">
+            <h1>MT940 Converter</h1>
+            <div class="subtitle">Convert credit card transactions to MT940 bank format</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_footer():
+    """Render the footer with Numbr branding."""
+    st.markdown("""
+    <div class="footer">
+        Powered by <a href="https://numbr.nl" target="_blank">Numbr</a> - 
+        Modern accounting solutions for entrepreneurs
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def main():
     """Main Streamlit application."""
     st.set_page_config(
-        page_title="Credit Card to MT940 Converter",
-        page_icon="💳",
+        page_title="Numbr - MT940 Converter",
+        page_icon="https://numbr.nl/wp-content/uploads/Beeldmerk.jpg",
         layout="wide"
     )
     
-    st.title("💳 Credit Card to MT940 Converter")
-    st.markdown("Convert your credit card transactions from CSV format to MT940 bank format.")
+    # Apply Numbr styling
+    apply_numbr_styling()
+    
+    # Render header
+    render_header()
     
     # Initialize processor
     processor = TransactionProcessor()
@@ -30,20 +229,23 @@ def main():
         # Optional account number override
         account_number = st.text_input(
             "Account Number (optional)",
-            help="Override the account number from CSV file"
+            help="Override the account number from CSV file",
+            placeholder="e.g., NL54RABO0310737710"
         )
         
         # Optional statement number
         statement_number = st.text_input(
             "Statement Number (optional)",
-            help="Custom statement number (auto-generated if empty)"
+            help="Custom statement number (auto-generated if empty)",
+            placeholder="e.g., CC20250701"
         )
         
         # Optional opening balance
         opening_balance_str = st.text_input(
             "Opening Balance (optional)",
             value="0.00",
-            help="Starting balance for the statement"
+            help="Starting balance for the statement",
+            placeholder="0.00"
         )
         
         opening_balance = None
@@ -191,6 +393,9 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
         - **Final Payment Memos**: Ignored (last row indicators)
         - **Columns F, G, H**: Ignored as requested
         """)
+    
+    # Render footer
+    render_footer()
 
 
 if __name__ == "__main__":
