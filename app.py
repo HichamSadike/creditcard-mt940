@@ -241,9 +241,11 @@ def main():
         supported_types = processor.get_supported_file_types(selected_bank)
         st.info(f"**{selected_bank_display}** supports: {', '.join(supported_types).upper()} files")
         
-        # Optional account number override
+        # Optional account number override with bank-specific defaults
+        default_account = "NL91ABNA0417164300" if selected_bank == 'amex' else ""
         account_number = st.text_input(
             "Account Number (optional)",
+            value=default_account,
             help="Override the account number from file",
             placeholder="e.g., NL54RABO0310737710"
         )
