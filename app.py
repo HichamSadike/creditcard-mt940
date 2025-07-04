@@ -226,10 +226,25 @@ def main():
     with st.sidebar:
         st.header("Configuration")
         
+        # Bank selection
+        available_banks = processor.get_available_banks()
+        bank_options = {info['display_name']: key for key, info in available_banks.items()}
+        
+        selected_bank_display = st.selectbox(
+            "Select Bank",
+            options=list(bank_options.keys()),
+            help="Choose your bank to enable proper file processing"
+        )
+        selected_bank = bank_options[selected_bank_display]
+        
+        # Show supported file types for selected bank
+        supported_types = processor.get_supported_file_types(selected_bank)
+        st.info(f"**{selected_bank_display}** supports: {', '.join(supported_types).upper()} files")
+        
         # Optional account number override
         account_number = st.text_input(
             "Account Number (optional)",
-            help="Override the account number from CSV file",
+            help="Override the account number from file",
             placeholder="e.g., NL54RABO0310737710"
         )
         
@@ -255,11 +270,12 @@ def main():
             except:
                 st.error("Invalid opening balance format")
     
-    # File upload
+    # File upload with dynamic file type support
+    file_types = processor.get_supported_file_types(selected_bank)
     uploaded_file = st.file_uploader(
-        "Upload Credit Card CSV File",
-        type=['csv'],
-        help="Upload your credit card transaction CSV file"
+        f"Upload {selected_bank_display} Transaction File",
+        type=file_types,
+        help=f"Upload your {selected_bank_display} transaction file ({', '.join(file_types).upper()})"
     )
     
     if uploaded_file is not None:
@@ -269,27 +285,46 @@ def main():
             f.write(uploaded_file.getbuffer())
         
         try:
-            # Validate CSV format
-            validation_result = processor.validate_csv_format(temp_file_path)
+            # Validate file format based on selected bank
+            validation_result = processor.validate_file_format(temp_file_path, selected_bank)
             
             if not validation_result['valid']:
-                st.error(f"CSV Validation Error: {validation_result['error']}")
-                st.info("Expected CSV format:")
-                st.code("""
+                st.error(f"File Validation Error: {validation_result['error']}")
+                st.info(f"Expected {selected_bank_display} format:")
+                
+                # Show bank-specific format examples
+                if selected_bank == 'rabobank':
+                    st.code("""
 Tegenrekening IBAN;Transactiereferentie;Datum;Bedrag;Omschrijving;Oorspr bedrag;Oorspr munt;Koers
 NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
-                """)
+                    """)
+                elif selected_bank == 'ing':
+                    st.code("""
+"Accountnummer","Kaartnummer","Naam op kaart","Transactiedatum","Boekingsdatum","Omschrijving","Valuta","Bedrag","Koers","Bedrag in EUR"
+"00000374942","5534.****.****.5722","K.Z. CHIARETTI","2025-05-05","2025-05-05","Canva* 04506-56920230 Sydney AUS","","","","-11,99"
+                    """)
+                elif selected_bank == 'amex':
+                    st.info("AMEX Excel files should contain transaction data with dates, amounts, and descriptions.")
                 return
             
             st.success(f"✅ {validation_result['message']}")
             
             # Show file preview
-            with st.expander("📋 CSV File Preview"):
-                df = pd.read_csv(temp_file_path, sep=';', encoding='utf-8')
-                st.dataframe(df.head(10), use_container_width=True)
+            with st.expander(f"📋 {selected_bank_display} File Preview"):
+                if selected_bank in ['rabobank']:
+                    df = pd.read_csv(temp_file_path, sep=';', encoding='utf-8')
+                    st.dataframe(df.head(10), use_container_width=True)
+                elif selected_bank in ['ing']:
+                    df = pd.read_csv(temp_file_path, sep=',', encoding='utf-8')
+                    st.dataframe(df.head(10), use_container_width=True)
+                elif selected_bank in ['amex']:
+                    df = pd.read_excel(temp_file_path)
+                    # Convert all columns to string to avoid Arrow serialization issues
+                    df_display = df.head(10).astype(str)
+                    st.dataframe(df_display, use_container_width=True)
             
             # Get transaction summary
-            summary = processor.get_transaction_summary(temp_file_path)
+            summary = processor.get_transaction_summary(temp_file_path, selected_bank)
             
             # Display summary
             col1, col2, col3, col4 = st.columns(4)
@@ -329,13 +364,23 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
             
             if st.button("Convert to MT940", type="primary"):
                 try:
-                    with st.spinner("Converting to MT940 format..."):
-                        mt940_content = processor.process_csv_to_mt940(
-                            temp_file_path,
-                            account_number=account_number or None,
-                            statement_number=statement_number or None,
-                            opening_balance=opening_balance
-                        )
+                    with st.spinner(f"Converting {selected_bank_display} file to MT940 format..."):
+                        # Use legacy method for Rabobank to ensure exact compatibility
+                        if selected_bank == 'rabobank':
+                            mt940_content = processor.process_csv_to_mt940(
+                                temp_file_path,
+                                account_number=account_number or None,
+                                statement_number=statement_number or None,
+                                opening_balance=opening_balance
+                            )
+                        else:
+                            mt940_content = processor.process_file_to_mt940(
+                                temp_file_path,
+                                selected_bank,
+                                account_number=account_number or None,
+                                statement_number=statement_number or None,
+                                opening_balance=opening_balance
+                            )
                     
                     st.success("✅ MT940 conversion completed!")
                     
@@ -343,9 +388,9 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
                     with st.expander("📄 MT940 Preview"):
                         st.code(mt940_content, language='text')
                     
-                    # Download button
+                    # Download button - use original format for MoneyBird compatibility
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f"mt940_{timestamp}.txt"
+                    filename = f"mt940_{timestamp}.txt"  # Keep .txt extension as original
                     
                     st.download_button(
                         label="📥 Download MT940 File",
@@ -375,23 +420,31 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
         st.markdown("""
         ### How to use this converter:
         
-        1. **Upload CSV File**: Select your credit card transaction CSV file
-        2. **Configure Settings** (optional): Set account number, statement number, or opening balance
-        3. **Review Summary**: Check the transaction summary and processed transactions
-        4. **Convert**: Click "Convert to MT940" to generate the MT940 format
-        5. **Download**: Download the generated MT940 file
+        1. **Select Bank**: Choose your bank from the dropdown (Rabobank, ING, or AMEX)
+        2. **Upload File**: Upload your transaction file (CSV/Excel depending on bank)
+        3. **Configure Settings** (optional): Set account number, statement number, or opening balance
+        4. **Review Summary**: Check the transaction summary and processed transactions
+        5. **Convert**: Click "Convert to MT940" to generate the MT940 format
+        6. **Download**: Download the generated MT940 file
         
-        ### CSV Format Requirements:
-        - Semicolon (;) separated values
+        ### Supported Banks & Formats:
+        
+        #### **Rabobank**
+        - File type: CSV (semicolon-separated)
         - Required columns: `Tegenrekening IBAN`, `Transactiereferentie`, `Datum`, `Bedrag`, `Omschrijving`
         - Date format: DD-MM-YYYY
-        - Amount format: European format (comma as decimal separator)
+        - Business rules: Exchange rate surcharges combined, settlements converted to positive
         
-        ### Business Rules Applied:
-        - **Exchange Rate Surcharges**: Combined with main transaction amounts
-        - **Previous Statement Settlements**: Converted to positive amounts
-        - **Final Payment Memos**: Ignored (last row indicators)
-        - **Columns F, G, H**: Ignored as requested
+        #### **ING**
+        - File type: CSV (comma-separated)
+        - Required columns: `Accountnummer`, `Transactiedatum`, `Omschrijving`, `Bedrag in EUR`
+        - Date format: YYYY-MM-DD
+        - Business rules: Simple 1:1 transaction mapping, no merging
+        
+        #### **AMEX**
+        - File type: Excel (.xlsx/.xls)
+        - Required: Date, amount, and description columns
+        - Business rules: Payments ("HARTELIJK BEDANKT VOOR UW BETALING") → positive, purchases → negative
         """)
     
     # Render footer
