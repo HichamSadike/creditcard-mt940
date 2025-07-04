@@ -37,6 +37,8 @@ class MT940Formatter:
     
     def format_statement(self, statement: AccountStatement) -> str:
         """Format an account statement into MT940 format."""
+        # Reset transaction counter for each statement to ensure consistent numbering
+        self.transaction_reference_counter = 1
         lines = []
         
         # MT940 header
@@ -134,8 +136,11 @@ class MT940Formatter:
         transaction_code = self._get_transaction_code(transaction)
         
         # Transaction reference in working format: NONREF//reference_number
-        ref_number = transaction.reference or f"{self.transaction_reference_counter:011d}"
-        self.transaction_reference_counter += 1
+        if transaction.reference:
+            ref_number = transaction.reference
+        else:
+            ref_number = f"{self.transaction_reference_counter:011d}"
+            self.transaction_reference_counter += 1
         
         # Add counter account on next line - always use 0000000000 like working format
         line1 = f":61:{date_str}{credit_debit}{amount_str}{transaction_code}NONREF//{ref_number}"

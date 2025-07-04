@@ -319,7 +319,9 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
                     st.dataframe(df.head(10), use_container_width=True)
                 elif selected_bank in ['amex']:
                     df = pd.read_excel(temp_file_path)
-                    st.dataframe(df.head(10), use_container_width=True)
+                    # Convert all columns to string to avoid Arrow serialization issues
+                    df_display = df.head(10).astype(str)
+                    st.dataframe(df_display, use_container_width=True)
             
             # Get transaction summary
             summary = processor.get_transaction_summary(temp_file_path, selected_bank)
@@ -363,13 +365,22 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
             if st.button("Convert to MT940", type="primary"):
                 try:
                     with st.spinner(f"Converting {selected_bank_display} file to MT940 format..."):
-                        mt940_content = processor.process_file_to_mt940(
-                            temp_file_path,
-                            selected_bank,
-                            account_number=account_number or None,
-                            statement_number=statement_number or None,
-                            opening_balance=opening_balance
-                        )
+                        # Use legacy method for Rabobank to ensure exact compatibility
+                        if selected_bank == 'rabobank':
+                            mt940_content = processor.process_csv_to_mt940(
+                                temp_file_path,
+                                account_number=account_number or None,
+                                statement_number=statement_number or None,
+                                opening_balance=opening_balance
+                            )
+                        else:
+                            mt940_content = processor.process_file_to_mt940(
+                                temp_file_path,
+                                selected_bank,
+                                account_number=account_number or None,
+                                statement_number=statement_number or None,
+                                opening_balance=opening_balance
+                            )
                     
                     st.success("✅ MT940 conversion completed!")
                     
@@ -377,9 +388,9 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
                     with st.expander("📄 MT940 Preview"):
                         st.code(mt940_content, language='text')
                     
-                    # Download button
+                    # Download button - use original format for MoneyBird compatibility
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f"mt940_{timestamp}.txt"
+                    filename = f"mt940_{timestamp}.txt"  # Keep .txt extension as original
                     
                     st.download_button(
                         label="📥 Download MT940 File",

@@ -80,14 +80,14 @@ class TestAmexParser:
         assert transactions[0].amount == Decimal('-100.50')
         assert transactions[0].description == 'Store Purchase'
         assert transactions[0].date == datetime(2025, 5, 5)
-        assert transactions[0].counter_account == 'AMEX'
-        assert transactions[0].reference == 'AMEX-20250505-1'
-        assert transactions[0].transaction_type == 'CARD'
+        assert transactions[0].counter_account == 'NL00AMEX0000000000'
+        assert transactions[0].reference == '49000000001'
+        assert transactions[0].transaction_type == 'TRANSFER'
         
         assert transactions[1].amount == Decimal('-25.00')
         assert transactions[1].description == 'Restaurant'
         assert transactions[1].date == datetime(2025, 5, 6)
-        assert transactions[1].reference == 'AMEX-20250506-2'
+        assert transactions[1].reference == '49000000002'
     
     def test_parse_file_with_payments(self, tmp_path):
         """Test parsing with payment transactions."""
@@ -106,7 +106,7 @@ class TestAmexParser:
         
         assert len(transactions) == 3
         assert transactions[0].amount == Decimal('-100.50')
-        assert transactions[0].transaction_type == 'CARD'
+        assert transactions[0].transaction_type == 'TRANSFER'
         
         # Payment should be positive
         assert transactions[1].amount == Decimal('250.00')
@@ -114,7 +114,7 @@ class TestAmexParser:
         assert transactions[1].transaction_type == 'CREDIT'
         
         assert transactions[2].amount == Decimal('-25.00')
-        assert transactions[2].transaction_type == 'CARD'
+        assert transactions[2].transaction_type == 'TRANSFER'
     
     def test_parse_file_with_different_payment_keywords(self, tmp_path):
         """Test parsing with different payment keywords."""
@@ -138,7 +138,7 @@ class TestAmexParser:
         
         assert len(transactions) == 4
         assert transactions[0].amount == Decimal('-100.50')
-        assert transactions[0].transaction_type == 'CARD'
+        assert transactions[0].transaction_type == 'TRANSFER'
         
         # Only "hartelijk bedankt voor uw betaling" should be detected as payment
         assert transactions[1].amount == Decimal('250.00')
@@ -146,10 +146,10 @@ class TestAmexParser:
         
         # "DANK U VOOR UW BETALING" is NOT in payment_keywords, should remain negative
         assert transactions[2].amount == Decimal('-300.00')
-        assert transactions[2].transaction_type == 'CARD'
+        assert transactions[2].transaction_type == 'TRANSFER'
         
         assert transactions[3].amount == Decimal('-25.00')
-        assert transactions[3].transaction_type == 'CARD'
+        assert transactions[3].transaction_type == 'TRANSFER'
     
     def test_parse_file_with_header_detection(self, tmp_path):
         """Test parsing with header detection in Excel file."""
@@ -194,7 +194,7 @@ class TestAmexParser:
         
         account_info = self.parser.get_account_info(str(excel_file))
         
-        assert account_info['account_number'] == 'AMEX'
+        assert account_info['account_number'] == 'NL00AMEX0000000000'
         assert account_info['start_date'] == datetime(2025, 5, 5)
         assert account_info['end_date'] == datetime(2025, 5, 6)
     
@@ -228,7 +228,7 @@ class TestAmexParser:
         # Test regular transaction
         amount2, type2 = self.parser._apply_amex_logic(Decimal('-100.50'), 'Store Purchase')
         assert amount2 == Decimal('-100.50')
-        assert type2 == 'CARD'
+        assert type2 == 'TRANSFER'  # Changed from CARD to TRANSFER for Rabobank compatibility
         
         # Test case insensitive
         amount3, type3 = self.parser._apply_amex_logic(Decimal('-300.00'), 'hartelijk bedankt voor uw betaling')
@@ -292,10 +292,10 @@ class TestAmexParser:
     def test_generate_reference_id(self):
         """Test reference ID generation."""
         ref1 = self.parser._generate_reference_id(datetime(2025, 5, 5), 1)
-        assert ref1 == 'AMEX-20250505-1'
+        assert ref1 == '49000000001'
         
         ref2 = self.parser._generate_reference_id(datetime(2024, 12, 31), 999)
-        assert ref2 == 'AMEX-20241231-999'
+        assert ref2 == '49000000999'
     
     def test_parse_empty_file(self, tmp_path):
         """Test parsing empty Excel file."""

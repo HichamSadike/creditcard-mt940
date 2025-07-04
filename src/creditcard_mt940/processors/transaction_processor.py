@@ -157,10 +157,41 @@ class TransactionProcessor:
         statement_number: Optional[str] = None,
         opening_balance: Optional[Decimal] = None
     ) -> str:
-        """Legacy method - defaults to Rabobank for backward compatibility."""
-        return self.process_file_to_mt940(
-            file_path, 'rabobank', account_number, statement_number, opening_balance
+        """Legacy method - uses original CSV parser for exact compatibility."""
+        # Import the original CSV parser to ensure exact same behavior
+        from ..parsers.csv_parser import CSVParser
+        
+        # Use original CSV parser directly
+        csv_parser = CSVParser()
+        transactions = csv_parser.parse_csv(file_path)
+        
+        # Get account info from CSV if not provided
+        account_info = csv_parser.get_account_info(file_path)
+        
+        # Use provided values or defaults
+        final_account_number = account_number or account_info['account_number']
+        final_statement_number = statement_number or self._generate_statement_number(account_info['start_date'])
+        
+        # Calculate opening balance if not provided
+        if opening_balance is None:
+            opening_balance = self._calculate_opening_balance(transactions)
+        
+        # Calculate closing balance
+        closing_balance = self.mt940_formatter.calculate_closing_balance(opening_balance, transactions)
+        
+        # Create account statement
+        statement = AccountStatement(
+            account_number=final_account_number,
+            statement_number=final_statement_number,
+            opening_balance=opening_balance,
+            closing_balance=closing_balance,
+            transactions=transactions,
+            currency="EUR",
+            date=account_info['end_date']
         )
+        
+        # Format as MT940
+        return self.mt940_formatter.format_statement(statement)
     
     def process_csv_to_camt053(
         self,

@@ -127,14 +127,14 @@ class AmexParser(BaseParser):
             # Apply AMEX-specific business logic
             processed_amount, transaction_type = self._apply_amex_logic(amount, description)
             
-            # Generate reference ID
-            reference = self._generate_reference_id(date, index + 1)
+            # Generate reference ID in Rabobank format (numeric sequence)
+            reference = f"{49000000000 + index + 1}"  # Start from 49000000001 like Rabobank
             
             return Transaction(
                 date=date,
                 amount=processed_amount,
                 description=description,
-                counter_account="AMEX",  # AMEX doesn't provide IBAN
+                counter_account="NL00AMEX0000000000",  # Use IBAN-like format for consistency
                 reference=reference,
                 transaction_type=transaction_type
             )
@@ -144,15 +144,15 @@ class AmexParser(BaseParser):
             return None
     
     def _apply_amex_logic(self, amount: Decimal, description: str) -> tuple:
-        """Apply AMEX-specific business logic."""
+        """Apply AMEX-specific business logic with Rabobank-compatible transaction types."""
         description_lower = description.lower()
         
         # Check if this is a payment to AMEX (should be positive)
         if any(keyword in description_lower for keyword in self.payment_keywords):
-            return abs(amount), "CREDIT"  # Make positive
+            return abs(amount), "CREDIT"  # Make positive, keep as CREDIT
         
-        # All other transactions should be negative (purchases)
-        return -abs(amount), "CARD"  # Make negative
+        # All other transactions should be negative (purchases) but use TRANSFER type like Rabobank
+        return -abs(amount), "TRANSFER"  # Make negative, use TRANSFER for N544 code like Rabobank
     
     def _parse_date(self, date_value) -> datetime:
         """Parse date from various formats."""
@@ -209,8 +209,9 @@ class AmexParser(BaseParser):
         return False
     
     def _generate_reference_id(self, date: datetime, sequence: int) -> str:
-        """Generate reference ID for AMEX transaction."""
-        return f"AMEX-{date.strftime('%Y%m%d')}-{sequence}"
+        """Generate reference ID for AMEX transaction in Rabobank format."""
+        # Use numeric format like Rabobank: 49000000001, 49000000002, etc.
+        return f"{49000000000 + sequence}"
     
     def get_account_info(self, file_path: str) -> dict:
         """Extract account information from AMEX Excel."""
@@ -236,7 +237,7 @@ class AmexParser(BaseParser):
         max_date = max(dates) if dates else datetime.now()
         
         return {
-            'account_number': 'AMEX',  # AMEX doesn't use IBAN format
+            'account_number': 'NL00AMEX0000000000',  # Use IBAN-like format for MT940 compatibility
             'start_date': min_date,
             'end_date': max_date
         }
