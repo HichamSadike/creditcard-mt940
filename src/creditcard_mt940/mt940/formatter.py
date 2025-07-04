@@ -14,7 +14,7 @@ class Transaction:
     description: str
     counter_account: Optional[str] = None
     reference: Optional[str] = None
-    transaction_type: str = "NMSC"  # Non-swift code
+    transaction_type: str = "TRANSFER"  # CARD, TRANSFER, DIRECT_DEBIT, CREDIT
 
 
 @dataclass
@@ -39,14 +39,21 @@ class MT940Formatter:
         """Format an account statement into MT940 format."""
         lines = []
         
-        # Transaction reference number (field 20)
-        lines.append(f":20:{statement.statement_number}")
+        # MT940 header
+        lines.append(":940:")
         
-        # Account identification (field 25)
-        lines.append(f":25:{statement.account_number}")
+        # Transaction reference number (field 20) - match working format
+        ref_number = statement.statement_number.replace('CC', '940S')
+        lines.append(f":20:{ref_number}")
         
-        # Statement/sequence number (field 28C)
-        lines.append(f":28C:{statement.statement_number}")
+        # Account identification (field 25) - include currency
+        lines.append(f":25:{statement.account_number} {statement.currency}")
+        
+        # Statement/sequence number (field 28C) - use simplified format
+        seq_number = statement.statement_number.replace('CC20', '').replace('25', '25')
+        if len(seq_number) > 5:
+            seq_number = seq_number[-5:]  # Take last 5 digits
+        lines.append(f":28C:{seq_number}")
         
         # Opening balance (field 60F)
         opening_balance_line = self._format_balance(
@@ -76,6 +83,24 @@ class MT940Formatter:
         )
         lines.append(closing_balance_line)
         
+        # Available balance (field 64)
+        available_balance_line = self._format_balance(
+            "64", 
+            statement.closing_balance, 
+            statement.currency,
+            statement.date or datetime.now()
+        )
+        lines.append(available_balance_line)
+        
+        # Forward available balance (field 65) - typically same as closing balance
+        forward_balance_line = self._format_balance(
+            "65", 
+            statement.closing_balance, 
+            statement.currency,
+            statement.date or datetime.now()
+        )
+        lines.append(forward_balance_line)
+        
         return "\n".join(lines)
     
     def _format_balance(self, field_code: str, amount: Decimal, currency: str, date: datetime) -> str:
@@ -84,8 +109,11 @@ class MT940Formatter:
         abs_amount = abs(amount)
         date_str = date.strftime("%y%m%d")
         
-        # Format amount without decimal point
-        amount_str = f"{abs_amount:.2f}".replace(".", "")
+        # Format amount with comma as decimal separator and proper padding
+        amount_str = f"{abs_amount:.2f}".replace(".", ",")
+        # Pad with zeros to ensure minimum 12 characters for amount
+        amount_parts = amount_str.split(",")
+        amount_str = f"{amount_parts[0]:>09},{amount_parts[1]:0<2}"
         
         return f":{field_code}:{credit_debit}{date_str}{currency}{amount_str}"
     
@@ -96,32 +124,62 @@ class MT940Formatter:
         # Credit/debit indicator
         credit_debit = "C" if transaction.amount >= 0 else "D"
         
-        # Format amount without decimal point
-        amount_str = f"{abs(transaction.amount):.2f}".replace(".", "")
+        # Format amount with comma as decimal separator and proper padding
+        amount_str = f"{abs(transaction.amount):.2f}".replace(".", ",")
+        # Pad with zeros to ensure minimum 12 characters for amount
+        amount_parts = amount_str.split(",")
+        amount_str = f"{amount_parts[0]:>09},{amount_parts[1]:0<2}"
         
-        # Transaction reference
-        ref = f"{self.transaction_reference_counter:010d}"
+        # Transaction code based on transaction type - match working format
+        transaction_code = self._get_transaction_code(transaction)
+        
+        # Transaction reference in working format: NONREF//reference_number
+        ref_number = transaction.reference or f"{self.transaction_reference_counter:011d}"
         self.transaction_reference_counter += 1
         
-        return f":61:{date_str}{credit_debit}{amount_str}{transaction.transaction_type}{ref}"
+        # Add counter account on next line - always use 0000000000 like working format
+        line1 = f":61:{date_str}{credit_debit}{amount_str}{transaction_code}NONREF//{ref_number}"
+        return f"{line1}\n0000000000"
+    
+    def _get_transaction_code(self, transaction: Transaction) -> str:
+        """Get appropriate SWIFT transaction code based on transaction type."""
+        # Map transaction types to SWIFT codes
+        if transaction.transaction_type == "CARD":
+            return "N002"  # Card transactions
+        elif transaction.transaction_type == "TRANSFER":
+            return "N544"  # Bank transfers
+        elif transaction.transaction_type == "DIRECT_DEBIT":
+            return "N064"  # Direct debits
+        elif transaction.transaction_type == "CREDIT":
+            return "N541"  # Credits
+        else:
+            return "N544"  # Default to transfer
     
     def _format_transaction_info(self, transaction: Transaction) -> str:
-        """Format transaction information line (field 86)."""
-        info_parts = []
+        """Format transaction information line (field 86) to match working format."""
+        # Working format: /TRCD/002/BENM//NAME/COOKIEBOT KOEBENHAVN/REMI/description
         
-        # Add transaction description
-        if transaction.description:
-            info_parts.append(transaction.description[:35])  # Limit to 35 characters
+        # Get transaction code for TRCD field
+        trcd_code = "002" if transaction.transaction_type == "CARD" else "544"
         
-        # Add counter account if available
-        if transaction.counter_account:
-            info_parts.append(f"IBAN:{transaction.counter_account}")
+        # Extract merchant name and location from description
+        description = transaction.description.upper()
         
-        # Add reference if available
-        if transaction.reference:
-            info_parts.append(f"REF:{transaction.reference}")
+        # Split description into name and additional info
+        if len(description) > 25:
+            name_part = description[:25]
+            remi_part = description[25:] if len(description) > 25 else ""
+        else:
+            name_part = description
+            remi_part = ""
         
-        return f":86:{' '.join(info_parts)}"
+        # Build the /TRCD/ format string like working example
+        info_line = f"/TRCD/{trcd_code}/BENM//NAME/{name_part}"
+        
+        if remi_part:
+            info_line += f"/REMI/{remi_part}"
+        
+        return f":86:{info_line}"
     
     def calculate_closing_balance(self, opening_balance: Decimal, transactions: List[Transaction]) -> Decimal:
         """Calculate closing balance from opening balance and transactions."""

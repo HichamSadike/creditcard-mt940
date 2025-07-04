@@ -50,8 +50,8 @@ class TestMT940Formatter:
         assert transaction_line.startswith(":61:")
         assert "250301" in transaction_line  # Date
         assert "D" in transaction_line  # Debit indicator
-        assert "1969" in transaction_line  # Amount (19.69 without decimal)
-        assert "NMSC" in transaction_line  # Transaction type
+        assert "000000019,69" in transaction_line  # Amount with comma and padding
+        assert "N544" in transaction_line  # Transaction type (TRANSFER is default)
     
     def test_format_transaction_info(self):
         """Test formatting of transaction information."""
@@ -63,8 +63,9 @@ class TestMT940Formatter:
         # Check format
         assert info_line.startswith(":86:")
         assert "GTRANSLATE.COM" in info_line
-        assert "IBAN:NL54RABO0310737710" in info_line
-        assert "REF:49000000008" in info_line
+        assert "/TRCD/" in info_line
+        assert "/BENM//" in info_line
+        assert "/NAME/" in info_line
     
     def test_format_balance(self):
         """Test balance formatting."""
@@ -76,7 +77,7 @@ class TestMT940Formatter:
         )
         
         # Check format
-        assert balance_line == ":60F:C250301EUR10050"
+        assert balance_line == ":60F:C250301EUR000000100,50"
     
     def test_format_balance_negative(self):
         """Test negative balance formatting."""
@@ -88,7 +89,7 @@ class TestMT940Formatter:
         )
         
         # Check format
-        assert balance_line == ":62F:D250331EUR5025"
+        assert balance_line == ":62F:D250331EUR000000050,25"
     
     def test_calculate_closing_balance(self):
         """Test closing balance calculation."""
@@ -117,18 +118,21 @@ class TestMT940Formatter:
         mt940_content = self.formatter.format_statement(statement)
         
         # Check required fields
-        assert ":20:CC20250301" in mt940_content
-        assert ":25:NL54RABO0310737710" in mt940_content
-        assert ":28C:CC20250301" in mt940_content
-        assert ":60F:C250331EUR0" in mt940_content
-        assert ":62F:C250331EUR78471" in mt940_content
+        assert ":940:" in mt940_content  # MT940 header
+        assert ":20:940S20250301" in mt940_content  # Updated format
+        assert ":25:NL54RABO0310737710 EUR" in mt940_content  # Account with currency
+        assert ":28C:50301" in mt940_content  # Simplified sequence number
+        assert ":60F:C250331EUR000000000,00" in mt940_content  # Opening balance with comma
+        assert ":62F:C250331EUR000000784,71" in mt940_content  # Closing balance with comma
         
         # Check transactions are included
         assert ":61:" in mt940_content
         assert ":86:" in mt940_content
         assert "GTRANSLATE.COM" in mt940_content
-        assert "Settlement previous statement" in mt940_content
+        assert "SETTLEMENT PREVIOUS STATE" in mt940_content  # Truncated in new format
         assert "COOKIEBOT" in mt940_content
+        assert "NONREF//" in mt940_content  # New reference format
+        assert "/TRCD/" in mt940_content  # New transaction info format
     
     def test_transaction_reference_counter(self):
         """Test that transaction reference counter increments."""
@@ -151,9 +155,7 @@ class TestMT940Formatter:
         # Check that reference numbers are different
         assert line1 != line2
         
-        # Extract reference numbers (last 10 digits)
-        ref1 = line1[-10:]
-        ref2 = line2[-10:]
-        
-        assert ref1 != ref2
-        assert int(ref2) == int(ref1) + 1
+        # Extract reference numbers from the transaction lines
+        # Reference is in format N544XXXXXXXXXX where X is the reference
+        assert "0000000001" in line1
+        assert "0000000002" in line2
