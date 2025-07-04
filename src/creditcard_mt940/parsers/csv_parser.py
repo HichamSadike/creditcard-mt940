@@ -131,7 +131,8 @@ class CSVParser:
                     amount=abs(current_transaction.amount),  # Make positive
                     description=f"Settlement previous statement",
                     counter_account=current_transaction.counter_account,
-                    reference=current_transaction.reference
+                    reference=current_transaction.reference,
+                    transaction_type="CREDIT"
                 )
                 processed_transactions.append(settlement_transaction)
                 i += 1
@@ -150,13 +151,14 @@ class CSVParser:
                 description = f"{description} (incl. exchange rate surcharge)"
                 i += 1  # Skip the next transaction as it's been combined
             
-            # Create processed transaction
+            # Create processed transaction with proper classification
             transaction = Transaction(
                 date=current_transaction.date,
                 amount=combined_amount,
                 description=description,
                 counter_account=current_transaction.counter_account,
-                reference=current_transaction.reference
+                reference=current_transaction.reference,
+                transaction_type=self._classify_transaction(current_transaction)
             )
             
             processed_transactions.append(transaction)
@@ -187,6 +189,25 @@ class CSVParser:
             return ref2 == ref1 + 1  # Exchange rate surcharge should be the next reference
         except ValueError:
             return False
+    
+    def _classify_transaction(self, transaction: RawTransaction) -> str:
+        """Classify transaction type based on description and amount."""
+        description = transaction.description.lower()
+        
+        # Credit card transactions (most common for credit card CSV)
+        if any(keyword in description for keyword in ['betaalautomaat', 'apple pay', 'card', 'pos']):
+            return "CARD"
+        
+        # Direct debits / automatic payments
+        if any(keyword in description for keyword in ['incasso', 'automatische', 'subscription', 'recurring']):
+            return "DIRECT_DEBIT"
+        
+        # Credits (positive amounts)
+        if transaction.amount > 0:
+            return "CREDIT"
+        
+        # Default to transfer for other transactions
+        return "TRANSFER"
     
     def get_account_info(self, file_path: str) -> dict:
         """Extract account information from CSV."""

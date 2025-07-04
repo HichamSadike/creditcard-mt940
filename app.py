@@ -199,7 +199,7 @@ def render_footer():
     """Render the footer with Numbr branding."""
     st.markdown("""
     <div class="footer">
-        Powered by <a href="https://numbr.nl" target="_blank">Numbr</a> - 
+        Powered by <a href="https://numbr.nl" target="_blank">Numbr</a> & Hicham- 
         Modern accounting solutions for entrepreneurs
     </div>
     """, unsafe_allow_html=True)
@@ -337,7 +337,7 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
                             opening_balance=opening_balance
                         )
                     
-                    st.success("✅ Conversion completed successfully!")
+                    st.success("✅ MT940 conversion completed!")
                     
                     # Show MT940 preview
                     with st.expander("📄 MT940 Preview"):
@@ -356,7 +356,7 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
                     )
                     
                 except Exception as e:
-                    st.error(f"Error during conversion: {str(e)}")
+                    st.error(f"Error during MT940 conversion: {str(e)}")
                     st.error("Please check your CSV file format and try again.")
         
         except Exception as e:

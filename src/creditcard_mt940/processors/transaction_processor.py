@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from ..parsers.csv_parser import CSVParser
 from ..mt940.formatter import MT940Formatter, Transaction, AccountStatement
+from ..camt.formatter import CAMT053Formatter
 
 
 class TransactionProcessor:
@@ -14,6 +15,7 @@ class TransactionProcessor:
     def __init__(self):
         self.csv_parser = CSVParser()
         self.mt940_formatter = MT940Formatter()
+        self.camt053_formatter = CAMT053Formatter()
     
     def process_csv_to_mt940(
         self,
@@ -54,6 +56,46 @@ class TransactionProcessor:
         
         # Format as MT940
         return self.mt940_formatter.format_statement(statement)
+    
+    def process_csv_to_camt053(
+        self,
+        file_path: str,
+        account_number: Optional[str] = None,
+        statement_number: Optional[str] = None,
+        opening_balance: Optional[Decimal] = None
+    ) -> str:
+        """Process CSV file and return CAMT.053 formatted XML string."""
+        
+        # Parse CSV file
+        transactions = self.csv_parser.parse_csv(file_path)
+        
+        # Get account info from CSV if not provided
+        account_info = self.csv_parser.get_account_info(file_path)
+        
+        # Use provided values or defaults
+        final_account_number = account_number or account_info['account_number']
+        final_statement_number = statement_number or self._generate_statement_number(account_info['start_date'])
+        
+        # Calculate opening balance if not provided
+        if opening_balance is None:
+            opening_balance = self._calculate_opening_balance(transactions)
+        
+        # Calculate closing balance
+        closing_balance = self.mt940_formatter.calculate_closing_balance(opening_balance, transactions)
+        
+        # Create account statement
+        statement = AccountStatement(
+            account_number=final_account_number,
+            statement_number=final_statement_number,
+            opening_balance=opening_balance,
+            closing_balance=closing_balance,
+            transactions=transactions,
+            currency="EUR",
+            date=account_info['end_date']
+        )
+        
+        # Format as CAMT.053
+        return self.camt053_formatter.format_statement(statement)
     
     def _generate_statement_number(self, start_date: datetime) -> str:
         """Generate statement number based on date."""

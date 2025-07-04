@@ -51,7 +51,7 @@ NL54RABO0310737710;50000000013;27-3-2025;-108;COOKIEBOT                KOEBENHAV
             
             # Check transaction descriptions
             assert "GTRANSLATE.COM" in mt940_content
-            assert "Settlement previous statement" in mt940_content
+            assert "SETTLEMENT PREVIOUS STATE" in mt940_content
             assert "COOKIEBOT" in mt940_content
             
         finally:

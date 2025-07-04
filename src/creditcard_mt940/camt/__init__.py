@@ -1,0 +1,1 @@
+"""CAMT module for XML bank statement formatting."""
