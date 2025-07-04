@@ -206,3 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 CLAUDE.md
+mt940/
+test_files/
+.DS_Store
