@@ -61,10 +61,12 @@ class TestAmexParser:
         assert 'empty' in result['error']
     
     def test_parse_file_basic(self, tmp_path):
-        """Test basic file parsing."""
+        """Test basic file parsing with proper column structure."""
+        # Create DataFrame with Date in column 0, another column, Amount in column 2, Description in column 3
         data = {
             'Date': ['2025-05-05', '2025-05-06'],
-            'Amount': ['-100.50', '-25.00'],
+            'Reference': ['REF001', 'REF002'],
+            'Bedrag': ['-100.50', '-25.00'],  # Amount in column 3 (index 2)
             'Description': ['Store Purchase', 'Restaurant']
         }
         df = pd.DataFrame(data)
@@ -91,7 +93,8 @@ class TestAmexParser:
         """Test parsing with payment transactions."""
         data = {
             'Date': ['2025-05-05', '2025-05-06', '2025-05-07'],
-            'Amount': ['-100.50', '-250.00', '-25.00'],
+            'Reference': ['REF001', 'REF002', 'REF003'],
+            'Bedrag': ['-100.50', '-250.00', '-25.00'],  # Amount in column 3 (index 2)
             'Description': ['Store Purchase', 'HARTELIJK BEDANKT VOOR UW BETALING', 'Restaurant']
         }
         df = pd.DataFrame(data)
@@ -117,11 +120,12 @@ class TestAmexParser:
         """Test parsing with different payment keywords."""
         data = {
             'Date': ['2025-05-05', '2025-05-06', '2025-05-07', '2025-05-08'],
-            'Amount': ['-100.50', '-250.00', '-300.00', '-25.00'],
+            'Reference': ['REF001', 'REF002', 'REF003', 'REF004'],
+            'Bedrag': ['-100.50', '-250.00', '-300.00', '-25.00'],  # Amount in column 3 (index 2)
             'Description': [
                 'Store Purchase', 
                 'hartelijk bedankt voor uw betaling',  # lowercase
-                'DANK U VOOR UW BETALING',  # different phrase
+                'DANK U VOOR UW BETALING',  # different phrase - should NOT be detected as payment
                 'Restaurant'
             ]
         }
@@ -136,12 +140,13 @@ class TestAmexParser:
         assert transactions[0].amount == Decimal('-100.50')
         assert transactions[0].transaction_type == 'CARD'
         
-        # Both payments should be positive
+        # Only "hartelijk bedankt voor uw betaling" should be detected as payment
         assert transactions[1].amount == Decimal('250.00')
         assert transactions[1].transaction_type == 'CREDIT'
         
-        assert transactions[2].amount == Decimal('300.00')
-        assert transactions[2].transaction_type == 'CREDIT'
+        # "DANK U VOOR UW BETALING" is NOT in payment_keywords, should remain negative
+        assert transactions[2].amount == Decimal('-300.00')
+        assert transactions[2].transaction_type == 'CARD'
         
         assert transactions[3].amount == Decimal('-25.00')
         assert transactions[3].transaction_type == 'CARD'

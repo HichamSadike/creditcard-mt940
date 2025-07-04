@@ -72,67 +72,70 @@ class AmexParser(BaseParser):
     def _parse_amex_row(self, row: pd.Series, index: int) -> Transaction:
         """Parse a single AMEX row into a Transaction."""
         try:
-            # Try to identify date column (usually first few columns)
+            # AMEX Excel structure: assume standard format with amount in column 3 (index 2)
+            # Try to identify date column (usually first column)
             date = None
-            for i in range(min(3, len(row))):
-                if pd.notna(row.iloc[i]):
-                    try:
-                        # Try different date formats
-                        date_str = str(row.iloc[i]).strip()
-                        for date_format in ['%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y']:
-                            try:
-                                date = datetime.strptime(date_str, date_format)
-                                break
-                            except ValueError:
-                                continue
-                        if date:
-                            break
-                    except:
-                        continue
+            date_col_idx = 0
+            if pd.notna(row.iloc[date_col_idx]):
+                try:
+                    date = self._parse_date(row.iloc[date_col_idx])
+                except:
+                    # If first column is not date, try second column
+                    date_col_idx = 1
+                    if len(row) > 1 and pd.notna(row.iloc[date_col_idx]):
+                        try:
+                            date = self._parse_date(row.iloc[date_col_idx])
+                        except:
+                            date = None
             
             if not date:
                 return None
             
-            # Try to find amount column (look for numeric values)
+            # Amount is expected to be in column 3 (index 2) - the "Bedrag" column
             amount = None
-            amount_col_idx = None
-            for i in range(len(row)):
-                if pd.notna(row.iloc[i]):
-                    try:
-                        amount_str = str(row.iloc[i]).replace(',', '.').replace('€', '').strip()
-                        # Remove any non-numeric characters except decimal point and minus
-                        amount_str = ''.join(c for c in amount_str if c.isdigit() or c in '.-')
-                        if amount_str and amount_str != '-':
-                            amount = Decimal(amount_str)
-                            amount_col_idx = i
-                            break
-                    except:
-                        continue
+            amount_col_idx = 2
+            if len(row) > amount_col_idx and pd.notna(row.iloc[amount_col_idx]):
+                try:
+                    amount = self._clean_amount(row.iloc[amount_col_idx])
+                except:
+                    # If column 3 doesn't work, try to find amount in other columns
+                    for i in range(len(row)):
+                        if pd.notna(row.iloc[i]):
+                            try:
+                                amount = self._clean_amount(row.iloc[i])
+                                amount_col_idx = i
+                                break
+                            except:
+                                continue
             
             if amount is None:
                 return None
             
-            # Try to find description column (usually text column after amount)
+            # Try to find description column (usually after amount or in a text column)
             description = ""
             for i in range(len(row)):
-                if i != amount_col_idx and pd.notna(row.iloc[i]):
+                if i != date_col_idx and i != amount_col_idx and pd.notna(row.iloc[i]):
                     cell_str = str(row.iloc[i]).strip()
-                    if cell_str and not cell_str.replace('.', '').replace(',', '').replace('-', '').isdigit():
+                    # Skip if it looks like a date or amount
+                    if cell_str and not self._looks_like_date_or_amount(cell_str):
                         if len(cell_str) > len(description):
                             description = cell_str
             
             if not description:
-                description = f"AMEX Transaction {index}"
+                description = f"AMEX Transaction {index + 1}"
             
             # Apply AMEX-specific business logic
             processed_amount, transaction_type = self._apply_amex_logic(amount, description)
+            
+            # Generate reference ID
+            reference = self._generate_reference_id(date, index + 1)
             
             return Transaction(
                 date=date,
                 amount=processed_amount,
                 description=description,
                 counter_account="AMEX",  # AMEX doesn't provide IBAN
-                reference=f"AMEX_{index:06d}",
+                reference=reference,
                 transaction_type=transaction_type
             )
             
@@ -151,6 +154,64 @@ class AmexParser(BaseParser):
         # All other transactions should be negative (purchases)
         return -abs(amount), "CARD"  # Make negative
     
+    def _parse_date(self, date_value) -> datetime:
+        """Parse date from various formats."""
+        if isinstance(date_value, datetime):
+            return date_value
+        elif pd.isna(date_value):
+            raise ValueError("Date value is NaN")
+        
+        # Convert to string and try different formats
+        date_str = str(date_value).strip()
+        
+        # Try common date formats
+        for date_format in ['%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y', '%d-%m-%Y']:
+            try:
+                return datetime.strptime(date_str, date_format)
+            except ValueError:
+                continue
+        
+        # Try pandas timestamp parsing as fallback
+        try:
+            return pd.to_datetime(date_value).to_pydatetime()
+        except:
+            raise ValueError(f"Could not parse date: {date_value}")
+    
+    def _clean_amount(self, amount_value) -> Decimal:
+        """Clean and convert amount to Decimal."""
+        if pd.isna(amount_value):
+            raise ValueError("Amount value is NaN")
+        
+        # Convert to string and clean
+        amount_str = str(amount_value).strip()
+        
+        # Remove currency symbols and clean
+        amount_str = amount_str.replace('€', '').replace('$', '').replace(',', '.').strip()
+        
+        # Remove any non-numeric characters except decimal point and minus
+        cleaned = ''.join(c for c in amount_str if c.isdigit() or c in '.-')
+        
+        if not cleaned or cleaned == '-':
+            raise ValueError(f"Invalid amount format: {amount_value}")
+        
+        return Decimal(cleaned)
+    
+    def _looks_like_date_or_amount(self, text: str) -> bool:
+        """Check if text looks like a date or amount."""
+        # Check if it looks like an amount (has digits and decimal/comma)
+        if any(c.isdigit() for c in text) and any(c in '.,€$-' for c in text):
+            return True
+        
+        # Check if it looks like a date (has digits and date separators)
+        if any(c.isdigit() for c in text) and any(c in '/-' for c in text):
+            return True
+        
+        return False
+    
+    def _generate_reference_id(self, date: datetime, sequence: int) -> str:
+        """Generate reference ID for AMEX transaction."""
+        return f"AMEX-{date.strftime('%Y%m%d')}-{sequence}"
+    
     def get_account_info(self, file_path: str) -> dict:
         """Extract account information from AMEX Excel."""
         try:
@@ -161,17 +222,13 @@ class AmexParser(BaseParser):
         # Try to extract dates to determine range
         dates = []
         for _, row in df.iterrows():
-            for cell in row:
-                if pd.notna(cell):
+            # Try first two columns for dates (standard AMEX format)
+            for col_idx in [0, 1]:
+                if col_idx < len(row) and pd.notna(row.iloc[col_idx]):
                     try:
-                        date_str = str(cell).strip()
-                        for date_format in ['%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y']:
-                            try:
-                                date = datetime.strptime(date_str, date_format)
-                                dates.append(date)
-                                break
-                            except ValueError:
-                                continue
+                        date = self._parse_date(row.iloc[col_idx])
+                        dates.append(date)
+                        break  # Found date in this row, move to next row
                     except:
                         continue
         
@@ -187,11 +244,26 @@ class AmexParser(BaseParser):
     def validate_file_format(self, file_path: str) -> dict:
         """Validate AMEX Excel file format and return validation results."""
         try:
+            # Check file extension
+            if not file_path.lower().endswith(('.xlsx', '.xls')):
+                return {
+                    'valid': False,
+                    'error': "File must be an Excel file (.xlsx or .xls)",
+                    'columns_found': []
+                }
+            
             # Try to read the Excel file
             try:
                 df = pd.read_excel(file_path, engine='openpyxl')
             except:
-                df = pd.read_excel(file_path, engine='xlrd')
+                try:
+                    df = pd.read_excel(file_path, engine='xlrd')
+                except:
+                    return {
+                        'valid': False,
+                        'error': "Could not read Excel file. Please ensure it's a valid Excel format.",
+                        'columns_found': []
+                    }
             
             # Check if we have any data
             if len(df) == 0:
@@ -211,13 +283,13 @@ class AmexParser(BaseParser):
             if not found_valid_transaction:
                 return {
                     'valid': False,
-                    'error': "No valid transactions found in AMEX Excel file",
+                    'error': "No valid transactions found in AMEX Excel file. Expected: Date in column 1, Amount in column 3.",
                     'columns_found': list(df.columns)
                 }
             
             return {
                 'valid': True,
-                'message': f"AMEX Excel file is valid with data",
+                'message': f"AMEX Excel file is valid with {len(df)} rows",
                 'columns_found': list(df.columns),
                 'row_count': len(df)
             }
