@@ -151,8 +151,8 @@ class AmexParser(BaseParser):
         if any(keyword in description_lower for keyword in self.payment_keywords):
             return abs(amount), "CREDIT"  # Make positive, keep as CREDIT
         
-        # All other transactions should be negative (purchases) but use TRANSFER type like Rabobank
-        return -abs(amount), "TRANSFER"  # Make negative, use TRANSFER for N544 code like Rabobank
+        # All other transactions should have their sign flipped (+ becomes -, - becomes +)
+        return -amount, "TRANSFER"  # Flip sign, use TRANSFER for N544 code like Rabobank
     
     def _parse_date(self, date_value) -> datetime:
         """Parse date from various formats."""
