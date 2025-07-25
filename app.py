@@ -295,10 +295,15 @@ def main():
                 st.info(f"Expected {selected_bank_display} format:")
                 
                 # Show bank-specific format examples
-                if selected_bank == 'rabobank':
+                if selected_bank == 'rabobank_old':
                     st.code("""
 Tegenrekening IBAN;Transactiereferentie;Datum;Bedrag;Omschrijving;Oorspr bedrag;Oorspr munt;Koers
 NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
+                    """)
+                elif selected_bank == 'rabobank_new':
+                    st.code("""
+Counterpty IBAN,Ccy,Credit Card Number,Product Name,Credit Card Line1,Credit Card Line2,Transaction Reference,Date,Amount,Description,Instr Amt,Instr Ccy,Rate
+NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,0002000000001,2025-06-02,-2.88,APPLE.COM/BILL...
                     """)
                 elif selected_bank == 'ing':
                     st.code("""
@@ -307,17 +312,50 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
                     """)
                 elif selected_bank == 'amex':
                     st.info("AMEX Excel files should contain transaction data with dates, amounts, and descriptions.")
+                elif selected_bank == 'ics':
+                    st.code("""
+Transactiedatum;Boekingsdatum;Omschrijving;Naam Card-houder;Card nummer;Debit/Credit;Bedrag;Merchant categorie;Land;Valuta;Bedrag in oorspronkelijke valuta;Type transactie;WalletProvider
+30-06-2025;01-07-2025;UPWORK -822746539REF DUBLIN IRL;"Crombag, DMP";****4073;D;121,00;Employment Agencies;IRL;EUR;121,00;Transaction;null
+                    """)
                 return
             
             st.success(f"✅ {validation_result['message']}")
             
             # Show file preview
             with st.expander(f"📋 {selected_bank_display} File Preview"):
-                if selected_bank in ['rabobank']:
-                    df = pd.read_csv(temp_file_path, sep=';', encoding='utf-8')
+                if selected_bank in ['rabobank_old']:
+                    # Try different encodings for old Rabobank format
+                    for encoding in ['utf-8', 'latin-1', 'cp1252']:
+                        try:
+                            df = pd.read_csv(temp_file_path, sep=';', encoding=encoding)
+                            break
+                        except UnicodeDecodeError:
+                            continue
+                    st.dataframe(df.head(10), use_container_width=True)
+                elif selected_bank in ['rabobank_new']:
+                    # Try different encodings for new Rabobank format
+                    for encoding in ['utf-8', 'latin-1', 'cp1252']:
+                        try:
+                            df = pd.read_csv(temp_file_path, sep=',', encoding=encoding)
+                            # Clean column names (remove non-breaking spaces)
+                            df.columns = [col.replace('\xa0', ' ').strip() for col in df.columns]
+                            break
+                        except UnicodeDecodeError:
+                            continue
                     st.dataframe(df.head(10), use_container_width=True)
                 elif selected_bank in ['ing']:
                     df = pd.read_csv(temp_file_path, sep=',', encoding='utf-8')
+                    st.dataframe(df.head(10), use_container_width=True)
+                elif selected_bank in ['ics']:
+                    # Try different encodings for ICS format
+                    for encoding in ['utf-8', 'latin-1', 'cp1252', 'utf-8-sig']:
+                        try:
+                            df = pd.read_csv(temp_file_path, sep=';', encoding=encoding)
+                            # Clean column names (remove BOM and whitespace issues)
+                            df.columns = [col.replace('\ufeff', '').replace('\xa0', ' ').strip() for col in df.columns]
+                            break
+                        except UnicodeDecodeError:
+                            continue
                     st.dataframe(df.head(10), use_container_width=True)
                 elif selected_bank in ['amex']:
                     df = pd.read_excel(temp_file_path)
@@ -367,8 +405,8 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
             if st.button("Convert to MT940", type="primary"):
                 try:
                     with st.spinner(f"Converting {selected_bank_display} file to MT940 format..."):
-                        # Use legacy method for Rabobank to ensure exact compatibility
-                        if selected_bank == 'rabobank':
+                        # Use legacy method for old Rabobank format to ensure exact compatibility
+                        if selected_bank == 'rabobank_old':
                             mt940_content = processor.process_csv_to_mt940(
                                 temp_file_path,
                                 account_number=account_number or None,
@@ -431,10 +469,16 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
         
         ### Supported Banks & Formats:
         
-        #### **Rabobank**
+        #### **Rabobank (Old Format)**
         - File type: CSV (semicolon-separated)
         - Required columns: `Tegenrekening IBAN`, `Transactiereferentie`, `Datum`, `Bedrag`, `Omschrijving`
         - Date format: DD-MM-YYYY
+        - Business rules: Exchange rate surcharges combined, settlements converted to positive
+        
+        #### **Rabobank (New Format)**
+        - File type: CSV (comma-separated)
+        - Required columns: `Counterpty IBAN`, `Transaction Reference`, `Date`, `Amount`, `Description`
+        - Date format: YYYY-MM-DD
         - Business rules: Exchange rate surcharges combined, settlements converted to positive
         
         #### **ING**
@@ -447,6 +491,12 @@ NL54RABO0310737710;49000000007;27-2-2025;-108;COOKIEBOT...;;;
         - File type: Excel (.xlsx/.xls)
         - Required: Date, amount, and description columns
         - Business rules: Payments ("HARTELIJK BEDANKT VOOR UW BETALING") → positive, purchases → negative
+        
+        #### **ICS**
+        - File type: CSV (semicolon-separated)
+        - Required columns: `Transactiedatum`, `Omschrijving`, `Debit/Credit`, `Bedrag`
+        - Date format: DD-MM-YYYY
+        - Business rules: Sign flipping based on Debit/Credit indicator - Debit (D) → negative, Credit (C) → positive
         """)
     
     # Render footer

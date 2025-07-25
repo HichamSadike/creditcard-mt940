@@ -2,9 +2,11 @@
 
 from typing import Dict, Type
 from .base_parser import BaseParser
-from .rabobank_parser import RabobankParser
+from .rabobank_old_parser import RabobankParser as RabobankOldParser
+from .rabobank_new_parser import RabobankNewParser
 from .ing_parser import IngParser
 from .amex_parser import AmexParser
+from .ics_parser import IcsParser
 
 
 class ParserFactory:
@@ -12,9 +14,11 @@ class ParserFactory:
     
     def __init__(self):
         self._parsers: Dict[str, Type[BaseParser]] = {
-            'rabobank': RabobankParser,
+            'rabobank_old': RabobankOldParser,
+            'rabobank_new': RabobankNewParser,
             'ing': IngParser,
-            'amex': AmexParser
+            'amex': AmexParser,
+            'ics': IcsParser
         }
     
     def get_available_banks(self) -> Dict[str, Dict]:
@@ -22,10 +26,18 @@ class ParserFactory:
         banks = {}
         for bank_key, parser_class in self._parsers.items():
             parser = parser_class()
+            # Create display names that distinguish between old and new Rabobank formats
+            if bank_key == 'rabobank_old':
+                display_name = 'Rabobank (Old Format)'
+            elif bank_key == 'rabobank_new':
+                display_name = 'Rabobank (New Format)'
+            else:
+                display_name = parser.get_bank_name()
+            
             banks[bank_key] = {
                 'name': parser.get_bank_name(),
                 'supported_files': parser.get_supported_file_types(),
-                'display_name': parser.get_bank_name()
+                'display_name': display_name
             }
         return banks
     
