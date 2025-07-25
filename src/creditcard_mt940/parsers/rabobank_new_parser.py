@@ -1,4 +1,4 @@
-"""Rabobank credit card CSV parser with business rules."""
+"""Rabobank credit card CSV parser for new format with business rules."""
 
 import pandas as pd
 from datetime import datetime
@@ -12,19 +12,22 @@ from ..mt940.formatter import Transaction
 
 @dataclass
 class RawTransaction:
-    """Raw transaction data from CSV."""
+    """Raw transaction data from new CSV format."""
     counter_account: str
     reference: str
     date: datetime
     amount: Decimal
     description: str
+    currency: str = "EUR"
+    credit_card_number: str = ""
+    product_name: str = ""
     original_amount: Optional[Decimal] = None
     original_currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
 
 
-class RabobankParser(BaseParser):
-    """Parser for Rabobank credit card CSV files with business rules."""
+class RabobankNewParser(BaseParser):
+    """Parser for new Rabobank credit card CSV files with business rules."""
     
     def __init__(self):
         super().__init__()
@@ -39,8 +42,19 @@ class RabobankParser(BaseParser):
         return ["csv"]
     
     def parse_file(self, file_path: str) -> List[Transaction]:
-        """Parse Rabobank CSV file and return list of transactions."""
-        df = pd.read_csv(file_path, sep=';', encoding='utf-8')
+        """Parse new format Rabobank CSV file and return list of transactions."""
+        # Try different encodings for Rabobank files
+        for encoding in ['utf-8', 'latin-1', 'cp1252']:
+            try:
+                df = pd.read_csv(file_path, sep=',', encoding=encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise ValueError("Could not decode CSV file with any supported encoding")
+        
+        # Clean column names (remove non-breaking spaces and other whitespace issues)
+        df.columns = [col.replace('\xa0', ' ').strip() for col in df.columns]
         
         # Parse raw transactions
         raw_transactions = self._parse_raw_transactions(df)
@@ -56,19 +70,19 @@ class RabobankParser(BaseParser):
         
         for index, row in df.iterrows():
             # Skip empty rows or rows with missing essential data
-            if pd.isna(row.get('Omschrijving', '')) or pd.isna(row.get('Bedrag', '')):
+            if pd.isna(row.get('Description', '')) or pd.isna(row.get('Amount', '')):
                 continue
                 
-            # Parse date (DD-MM-YYYY format)
-            date_str = str(row['Datum']).strip()
+            # Parse date (YYYY-MM-DD format)
+            date_str = str(row['Date']).strip()
             try:
-                date = datetime.strptime(date_str, '%d-%m-%Y')
+                date = datetime.strptime(date_str, '%Y-%m-%d')
             except ValueError:
                 print(f"Warning: Invalid date format in row {index}: {date_str}")
                 continue
             
             # Parse amount (European format with comma as decimal separator)
-            amount_str = str(row['Bedrag']).replace(',', '.')
+            amount_str = str(row['Amount']).replace(',', '.')
             try:
                 amount = Decimal(amount_str)
             except:
@@ -76,7 +90,7 @@ class RabobankParser(BaseParser):
                 continue
             
             # Parse description
-            description = str(row['Omschrijving']).strip()
+            description = str(row['Description']).strip()
             
             # Skip if this is the final indicator row (Monthly Payment memo)
             if any(keyword.lower() in description.lower() for keyword in self.ignored_keywords):
@@ -87,27 +101,30 @@ class RabobankParser(BaseParser):
             original_currency = None
             exchange_rate = None
             
-            if pd.notna(row.get('Oorspr bedrag')) and str(row['Oorspr bedrag']).strip():
+            if pd.notna(row.get('Instr Amt')) and str(row['Instr Amt']).strip():
                 try:
-                    original_amount = Decimal(str(row['Oorspr bedrag']).replace(',', '.'))
+                    original_amount = Decimal(str(row['Instr Amt']).replace(',', '.'))
                 except:
                     pass
             
-            if pd.notna(row.get('Oorspr munt')) and str(row['Oorspr munt']).strip():
-                original_currency = str(row['Oorspr munt']).strip()
+            if pd.notna(row.get('Instr Ccy')) and str(row['Instr Ccy']).strip():
+                original_currency = str(row['Instr Ccy']).strip()
             
-            if pd.notna(row.get('Koers')) and str(row['Koers']).strip():
+            if pd.notna(row.get('Rate')) and str(row['Rate']).strip():
                 try:
-                    exchange_rate = Decimal(str(row['Koers']).replace(',', '.'))
+                    exchange_rate = Decimal(str(row['Rate']).replace(',', '.'))
                 except:
                     pass
             
             raw_transaction = RawTransaction(
-                counter_account=str(row['Tegenrekening IBAN']).strip(),
-                reference=str(row['Transactiereferentie']).strip(),
+                counter_account=str(row['Counterpty IBAN']).strip(),
+                reference=str(row['Transaction Reference']).strip(),
                 date=date,
                 amount=amount,
                 description=description,
+                currency=str(row.get('Ccy', 'EUR')).strip(),
+                credit_card_number=str(row.get('Credit Card Number', '')).strip(),
+                product_name=str(row.get('Product Name', '')).strip(),
                 original_amount=original_amount,
                 original_currency=original_currency,
                 exchange_rate=exchange_rate
@@ -190,7 +207,7 @@ class RabobankParser(BaseParser):
         if transaction1.date.date() != transaction2.date.date():
             return False
         
-        # Check if references are consecutive
+        # Check if references are consecutive (new format uses different reference pattern)
         try:
             ref1 = int(transaction1.reference)
             ref2 = int(transaction2.reference)
@@ -203,7 +220,7 @@ class RabobankParser(BaseParser):
         description = transaction.description.lower()
         
         # Credit card transactions (most common for credit card CSV)
-        if any(keyword in description for keyword in ['betaalautomaat', 'apple pay', 'card', 'pos']):
+        if any(keyword in description for keyword in ['apple pay', 'card', 'pos']):
             return "CARD"
         
         # Direct debits / automatic payments
@@ -218,19 +235,30 @@ class RabobankParser(BaseParser):
         return "TRANSFER"
     
     def get_account_info(self, file_path: str) -> dict:
-        """Extract account information from Rabobank CSV."""
-        df = pd.read_csv(file_path, sep=';', encoding='utf-8')
+        """Extract account information from new format Rabobank CSV."""
+        # Try different encodings for Rabobank files
+        for encoding in ['utf-8', 'latin-1', 'cp1252']:
+            try:
+                df = pd.read_csv(file_path, sep=',', encoding=encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise ValueError("Could not decode CSV file with any supported encoding")
+        
+        # Clean column names (remove non-breaking spaces and other whitespace issues)
+        df.columns = [col.replace('\xa0', ' ').strip() for col in df.columns]
         
         # Get account number from first row
-        account_number = str(df.iloc[0]['Tegenrekening IBAN']).strip()
+        account_number = str(df.iloc[0]['Counterpty IBAN']).strip()
         
         # Get date range
         dates = []
         for _, row in df.iterrows():
-            if pd.notna(row.get('Datum')):
+            if pd.notna(row.get('Date')):
                 try:
-                    date_str = str(row['Datum']).strip()
-                    date = datetime.strptime(date_str, '%d-%m-%Y')
+                    date_str = str(row['Date']).strip()
+                    date = datetime.strptime(date_str, '%Y-%m-%d')
                     dates.append(date)
                 except ValueError:
                     continue
@@ -245,20 +273,34 @@ class RabobankParser(BaseParser):
         }
     
     def validate_file_format(self, file_path: str) -> dict:
-        """Validate Rabobank CSV file format and return validation results."""
+        """Validate new format Rabobank CSV file format and return validation results."""
         try:
             import pandas as pd
             
-            # Try to read the CSV
-            df = pd.read_csv(file_path, sep=';', encoding='utf-8')
+            # Try to read the CSV with different encodings
+            for encoding in ['utf-8', 'latin-1', 'cp1252']:
+                try:
+                    df = pd.read_csv(file_path, sep=',', encoding=encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                return {
+                    'valid': False,
+                    'error': "Could not decode CSV file with any supported encoding",
+                    'columns_found': []
+                }
             
-            # Check required columns
+            # Clean column names (remove non-breaking spaces and other whitespace issues)
+            df.columns = [col.replace('\xa0', ' ').strip() for col in df.columns]
+            
+            # Check required columns for new format
             required_columns = [
-                'Tegenrekening IBAN',
-                'Transactiereferentie', 
-                'Datum',
-                'Bedrag',
-                'Omschrijving'
+                'Counterpty IBAN',
+                'Transaction Reference', 
+                'Date',
+                'Amount',
+                'Description'
             ]
             
             missing_columns = [col for col in required_columns if col not in df.columns]
@@ -282,17 +324,17 @@ class RabobankParser(BaseParser):
             validation_errors = []
             
             for index, row in df.head(5).iterrows():
-                # Check date format
+                # Check date format (YYYY-MM-DD)
                 try:
-                    datetime.strptime(str(row['Datum']), '%d-%m-%Y')
+                    datetime.strptime(str(row['Date']), '%Y-%m-%d')
                 except ValueError:
-                    validation_errors.append(f"Invalid date format in row {index}: {row['Datum']}")
+                    validation_errors.append(f"Invalid date format in row {index}: {row['Date']}")
                 
                 # Check amount format
                 try:
-                    Decimal(str(row['Bedrag']).replace(',', '.'))
+                    Decimal(str(row['Amount']).replace(',', '.'))
                 except:
-                    validation_errors.append(f"Invalid amount format in row {index}: {row['Bedrag']}")
+                    validation_errors.append(f"Invalid amount format in row {index}: {row['Amount']}")
             
             if validation_errors:
                 return {
@@ -303,7 +345,7 @@ class RabobankParser(BaseParser):
             
             return {
                 'valid': True,
-                'message': f"Rabobank CSV file is valid with {len(df)} transactions",
+                'message': f"New format Rabobank CSV file is valid with {len(df)} transactions",
                 'columns_found': list(df.columns),
                 'row_count': len(df)
             }
@@ -311,6 +353,6 @@ class RabobankParser(BaseParser):
         except Exception as e:
             return {
                 'valid': False,
-                'error': f"Error reading Rabobank CSV file: {str(e)}",
+                'error': f"Error reading new format Rabobank CSV file: {str(e)}",
                 'columns_found': []
             }
