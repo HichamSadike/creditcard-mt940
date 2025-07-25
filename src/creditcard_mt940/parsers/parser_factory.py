@@ -6,6 +6,7 @@ from .rabobank_old_parser import RabobankParser as RabobankOldParser
 from .rabobank_new_parser import RabobankNewParser
 from .ing_parser import IngParser
 from .amex_parser import AmexParser
+from .ics_parser import IcsParser
 
 
 class ParserFactory:
@@ -16,7 +17,8 @@ class ParserFactory:
             'rabobank_old': RabobankOldParser,
             'rabobank_new': RabobankNewParser,
             'ing': IngParser,
-            'amex': AmexParser
+            'amex': AmexParser,
+            'ics': IcsParser
         }
     
     def get_available_banks(self) -> Dict[str, Dict]:

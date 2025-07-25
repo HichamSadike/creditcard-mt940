@@ -312,6 +312,11 @@ NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,
                     """)
                 elif selected_bank == 'amex':
                     st.info("AMEX Excel files should contain transaction data with dates, amounts, and descriptions.")
+                elif selected_bank == 'ics':
+                    st.code("""
+Transactiedatum;Boekingsdatum;Omschrijving;Naam Card-houder;Card nummer;Debit/Credit;Bedrag;Merchant categorie;Land;Valuta;Bedrag in oorspronkelijke valuta;Type transactie;WalletProvider
+30-06-2025;01-07-2025;UPWORK -822746539REF DUBLIN IRL;"Crombag, DMP";****4073;D;121,00;Employment Agencies;IRL;EUR;121,00;Transaction;null
+                    """)
                 return
             
             st.success(f"✅ {validation_result['message']}")
@@ -340,6 +345,17 @@ NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,
                     st.dataframe(df.head(10), use_container_width=True)
                 elif selected_bank in ['ing']:
                     df = pd.read_csv(temp_file_path, sep=',', encoding='utf-8')
+                    st.dataframe(df.head(10), use_container_width=True)
+                elif selected_bank in ['ics']:
+                    # Try different encodings for ICS format
+                    for encoding in ['utf-8', 'latin-1', 'cp1252', 'utf-8-sig']:
+                        try:
+                            df = pd.read_csv(temp_file_path, sep=';', encoding=encoding)
+                            # Clean column names (remove BOM and whitespace issues)
+                            df.columns = [col.replace('\ufeff', '').replace('\xa0', ' ').strip() for col in df.columns]
+                            break
+                        except UnicodeDecodeError:
+                            continue
                     st.dataframe(df.head(10), use_container_width=True)
                 elif selected_bank in ['amex']:
                     df = pd.read_excel(temp_file_path)
@@ -475,6 +491,12 @@ NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,
         - File type: Excel (.xlsx/.xls)
         - Required: Date, amount, and description columns
         - Business rules: Payments ("HARTELIJK BEDANKT VOOR UW BETALING") → positive, purchases → negative
+        
+        #### **ICS**
+        - File type: CSV (semicolon-separated)
+        - Required columns: `Transactiedatum`, `Omschrijving`, `Debit/Credit`, `Bedrag`
+        - Date format: DD-MM-YYYY
+        - Business rules: Sign flipping based on Debit/Credit indicator - Debit (D) → negative, Credit (C) → positive
         """)
     
     # Render footer
