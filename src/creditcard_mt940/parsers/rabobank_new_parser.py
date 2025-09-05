@@ -34,12 +34,41 @@ class RabobankNewParser(BaseParser):
         self.exchange_rate_keywords = ["koersopslag"]
         self.settlement_keywords = ["verrekening vorig overzicht"]
         self.ignored_keywords = ["monthly payment memo"]
+        
+        # Column mapping: English -> Dutch
+        self.column_mapping = {
+            'Counterpty IBAN': 'Tegenrekening IBAN',
+            'Ccy': 'Munt',
+            'Credit Card Number': 'Creditcard Nummer',
+            'Product Name': 'Productnaam',
+            'Transaction Reference': 'Transactiereferentie',
+            'Date': 'Datum',
+            'Amount': 'Bedrag',
+            'Description': 'Omschrijving',
+            'Instr Amt': 'Oorspr bedrag',
+            'Instr Ccy': 'Oorspr munt',
+            'Rate': 'Koers'
+        }
     
     def get_bank_name(self) -> str:
         return "Rabobank"
     
     def get_supported_file_types(self) -> List[str]:
         return ["csv"]
+    
+    def _normalize_column_name(self, df: pd.DataFrame, english_name: str) -> str:
+        """Get the actual column name from DataFrame, supporting both English and Dutch."""
+        # First try the English name
+        if english_name in df.columns:
+            return english_name
+        
+        # Then try the Dutch equivalent
+        dutch_name = self.column_mapping.get(english_name)
+        if dutch_name and dutch_name in df.columns:
+            return dutch_name
+        
+        # Return the English name if neither is found (will cause an error downstream)
+        return english_name
     
     def parse_file(self, file_path: str) -> List[Transaction]:
         """Parse new format Rabobank CSV file and return list of transactions."""
@@ -68,13 +97,18 @@ class RabobankNewParser(BaseParser):
         """Parse raw transactions from DataFrame."""
         raw_transactions = []
         
+        # Get normalized column names
+        description_col = self._normalize_column_name(df, 'Description')
+        amount_col = self._normalize_column_name(df, 'Amount')
+        date_col = self._normalize_column_name(df, 'Date')
+        
         for index, row in df.iterrows():
             # Skip empty rows or rows with missing essential data
-            if pd.isna(row.get('Description', '')) or pd.isna(row.get('Amount', '')):
+            if pd.isna(row.get(description_col, '')) or pd.isna(row.get(amount_col, '')):
                 continue
                 
             # Parse date (YYYY-MM-DD format)
-            date_str = str(row['Date']).strip()
+            date_str = str(row[date_col]).strip()
             try:
                 date = datetime.strptime(date_str, '%Y-%m-%d')
             except ValueError:
@@ -82,7 +116,7 @@ class RabobankNewParser(BaseParser):
                 continue
             
             # Parse amount (European format with comma as decimal separator)
-            amount_str = str(row['Amount']).replace(',', '.')
+            amount_str = str(row[amount_col]).replace(',', '.')
             try:
                 amount = Decimal(amount_str)
             except:
@@ -90,41 +124,51 @@ class RabobankNewParser(BaseParser):
                 continue
             
             # Parse description
-            description = str(row['Description']).strip()
+            description = str(row[description_col]).strip()
             
             # Skip if this is the final indicator row (Monthly Payment memo)
             if any(keyword.lower() in description.lower() for keyword in self.ignored_keywords):
                 continue
+            
+            # Get normalized column names for optional fields
+            instr_amt_col = self._normalize_column_name(df, 'Instr Amt')
+            instr_ccy_col = self._normalize_column_name(df, 'Instr Ccy')
+            rate_col = self._normalize_column_name(df, 'Rate')
+            counterpty_col = self._normalize_column_name(df, 'Counterpty IBAN')
+            ref_col = self._normalize_column_name(df, 'Transaction Reference')
+            ccy_col = self._normalize_column_name(df, 'Ccy')
+            cc_num_col = self._normalize_column_name(df, 'Credit Card Number')
+            product_col = self._normalize_column_name(df, 'Product Name')
             
             # Parse optional fields
             original_amount = None
             original_currency = None
             exchange_rate = None
             
-            if pd.notna(row.get('Instr Amt')) and str(row['Instr Amt']).strip():
+            if pd.notna(row.get(instr_amt_col)) and str(row[instr_amt_col]).strip():
                 try:
-                    original_amount = Decimal(str(row['Instr Amt']).replace(',', '.'))
+                    original_amount = Decimal(str(row[instr_amt_col]).replace(',', '.'))
                 except:
                     pass
             
-            if pd.notna(row.get('Instr Ccy')) and str(row['Instr Ccy']).strip():
-                original_currency = str(row['Instr Ccy']).strip()
+            if pd.notna(row.get(instr_ccy_col)) and str(row[instr_ccy_col]).strip():
+                original_currency = str(row[instr_ccy_col]).strip()
             
-            if pd.notna(row.get('Rate')) and str(row['Rate']).strip():
+            if pd.notna(row.get(rate_col)) and str(row[rate_col]).strip():
                 try:
-                    exchange_rate = Decimal(str(row['Rate']).replace(',', '.'))
+                    exchange_rate = Decimal(str(row[rate_col]).replace(',', '.'))
                 except:
                     pass
             
             raw_transaction = RawTransaction(
-                counter_account=str(row['Counterpty IBAN']).strip(),
-                reference=str(row['Transaction Reference']).strip(),
+                counter_account=str(row[counterpty_col]).strip(),
+                reference=str(row[ref_col]).strip(),
                 date=date,
                 amount=amount,
                 description=description,
-                currency=str(row.get('Ccy', 'EUR')).strip(),
-                credit_card_number=str(row.get('Credit Card Number', '')).strip(),
-                product_name=str(row.get('Product Name', '')).strip(),
+                currency=str(row.get(ccy_col, 'EUR')).strip(),
+                credit_card_number=str(row.get(cc_num_col, '')).strip(),
+                product_name=str(row.get(product_col, '')).strip(),
                 original_amount=original_amount,
                 original_currency=original_currency,
                 exchange_rate=exchange_rate
@@ -249,15 +293,19 @@ class RabobankNewParser(BaseParser):
         # Clean column names (remove non-breaking spaces and other whitespace issues)
         df.columns = [col.replace('\xa0', ' ').strip() for col in df.columns]
         
+        # Get normalized column names
+        counterpty_col = self._normalize_column_name(df, 'Counterpty IBAN')
+        date_col = self._normalize_column_name(df, 'Date')
+        
         # Get account number from first row
-        account_number = str(df.iloc[0]['Counterpty IBAN']).strip()
+        account_number = str(df.iloc[0][counterpty_col]).strip()
         
         # Get date range
         dates = []
         for _, row in df.iterrows():
-            if pd.notna(row.get('Date')):
+            if pd.notna(row.get(date_col)):
                 try:
-                    date_str = str(row['Date']).strip()
+                    date_str = str(row[date_col]).strip()
                     date = datetime.strptime(date_str, '%Y-%m-%d')
                     dates.append(date)
                 except ValueError:
@@ -294,8 +342,8 @@ class RabobankNewParser(BaseParser):
             # Clean column names (remove non-breaking spaces and other whitespace issues)
             df.columns = [col.replace('\xa0', ' ').strip() for col in df.columns]
             
-            # Check required columns for new format
-            required_columns = [
+            # Check required columns for new format (both English and Dutch variants)
+            required_columns_english = [
                 'Counterpty IBAN',
                 'Transaction Reference', 
                 'Date',
@@ -303,7 +351,23 @@ class RabobankNewParser(BaseParser):
                 'Description'
             ]
             
-            missing_columns = [col for col in required_columns if col not in df.columns]
+            # Map to normalized column names that should exist
+            required_columns_normalized = []
+            missing_columns = []
+            
+            for english_col in required_columns_english:
+                normalized_col = self._normalize_column_name(df, english_col)
+                if normalized_col in df.columns:
+                    required_columns_normalized.append(normalized_col)
+                else:
+                    # Check if either English or Dutch version exists
+                    dutch_col = self.column_mapping.get(english_col)
+                    if not (english_col in df.columns or (dutch_col and dutch_col in df.columns)):
+                        missing_columns.append(f"{english_col} (or {dutch_col})")
+            
+            # For legacy compatibility - if we found missing columns, use the old approach
+            if not missing_columns:
+                missing_columns = []  # Reset since we handled it above
             
             if missing_columns:
                 return {
@@ -323,18 +387,22 @@ class RabobankNewParser(BaseParser):
             # Try to parse a few transactions to check format
             validation_errors = []
             
+            # Get normalized column names for validation
+            date_col = self._normalize_column_name(df, 'Date')
+            amount_col = self._normalize_column_name(df, 'Amount')
+            
             for index, row in df.head(5).iterrows():
                 # Check date format (YYYY-MM-DD)
                 try:
-                    datetime.strptime(str(row['Date']), '%Y-%m-%d')
+                    datetime.strptime(str(row[date_col]), '%Y-%m-%d')
                 except ValueError:
-                    validation_errors.append(f"Invalid date format in row {index}: {row['Date']}")
+                    validation_errors.append(f"Invalid date format in row {index}: {row[date_col]}")
                 
                 # Check amount format
                 try:
-                    Decimal(str(row['Amount']).replace(',', '.'))
+                    Decimal(str(row[amount_col]).replace(',', '.'))
                 except:
-                    validation_errors.append(f"Invalid amount format in row {index}: {row['Amount']}")
+                    validation_errors.append(f"Invalid amount format in row {index}: {row[amount_col]}")
             
             if validation_errors:
                 return {
