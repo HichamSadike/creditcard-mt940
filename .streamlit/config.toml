@@ -1,0 +1,13 @@
+[theme]
+# Set the default theme to light mode
+base = "light"
+
+# Optional: Customize colors to match Numbr branding
+primaryColor = "#0b0c67"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f8f9fa"
+textColor = "#262730"
+
+[server]
+# Optional: Set default port
+port = 8501
