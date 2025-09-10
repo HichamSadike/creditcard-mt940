@@ -242,7 +242,7 @@ def main():
         st.info(f"**{selected_bank_display}** supports: {', '.join(supported_types).upper()} files")
         
         # Optional account number override with bank-specific defaults
-        default_account = "NL91ABNA0417164300" if selected_bank == 'amex' else ""
+        default_account = "NL91ABNA0417164300" if selected_bank in ['amex', 'ics'] else ""
         account_number = st.text_input(
             "Account Number (optional)",
             value=default_account,
