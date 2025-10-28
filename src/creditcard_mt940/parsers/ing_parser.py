@@ -48,16 +48,16 @@ class IngParser(BaseParser):
             # Parse description
             description = str(row['Omschrijving']).strip()
             
-            # Get account number and card info
+            # Get account number and card info (for reference, but use default IBAN)
             account_number = str(row['Accountnummer']).strip()
             card_number = str(row['Kaartnummer']).strip()
-            
-            # Create transaction with ING-specific classification
+
+            # Create transaction with ING-specific classification using default IBAN
             transaction = Transaction(
                 date=date,
                 amount=amount,
                 description=description,
-                counter_account=account_number,
+                counter_account="NL98INGB1234567890",  # Use default IBAN for consistency
                 reference=f"ING_{index:06d}",  # Generate reference since ING doesn't provide one
                 transaction_type=self._classify_transaction(description, amount)
             )
@@ -88,10 +88,7 @@ class IngParser(BaseParser):
     def get_account_info(self, file_path: str) -> dict:
         """Extract account information from ING CSV."""
         df = pd.read_csv(file_path, sep=',', encoding='utf-8')
-        
-        # Get account number from first row
-        account_number = str(df.iloc[0]['Accountnummer']).strip()
-        
+
         # Get date range from transaction dates
         dates = []
         for _, row in df.iterrows():
@@ -102,12 +99,12 @@ class IngParser(BaseParser):
                     dates.append(date)
                 except ValueError:
                     continue
-        
+
         min_date = min(dates) if dates else datetime.now()
         max_date = max(dates) if dates else datetime.now()
-        
+
         return {
-            'account_number': account_number,
+            'account_number': 'NL98INGB1234567890',  # Use default IBAN for MT940 compatibility
             'start_date': min_date,
             'end_date': max_date
         }

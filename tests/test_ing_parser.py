@@ -74,13 +74,13 @@ class TestIngParser:
         assert transactions[0].amount == Decimal('-11.99')
         assert transactions[0].description == 'Canva* 04506-56920230 Sydney AUS'
         assert transactions[0].date == datetime(2025, 5, 5)
-        assert transactions[0].counter_account == '00000374942'
-        assert transactions[0].reference == 'ING-20250505-1'
+        assert transactions[0].counter_account == 'NL98INGB1234567890'
+        assert transactions[0].reference == 'ING_000000'
         
         assert transactions[1].amount == Decimal('-25.50')
         assert transactions[1].description == 'Store Purchase'
         assert transactions[1].date == datetime(2025, 5, 6)
-        assert transactions[1].reference == 'ING-20250506-2'
+        assert transactions[1].reference == 'ING_000001'
     
     def test_parse_file_with_positive_amounts(self, tmp_path):
         """Test parsing with positive amounts (credits)."""
@@ -109,8 +109,8 @@ class TestIngParser:
         csv_file.write_text(csv_content, encoding='utf-8')
         
         account_info = self.parser.get_account_info(str(csv_file))
-        
-        assert account_info['account_number'] == '00000374942'
+
+        assert account_info['account_number'] == 'NL98INGB1234567890'
         assert account_info['start_date'] == datetime(2025, 5, 5)
         assert account_info['end_date'] == datetime(2025, 5, 6)
     

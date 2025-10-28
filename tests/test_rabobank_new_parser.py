@@ -63,7 +63,7 @@ NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,
         assert transactions[0].description == 'APPLE.COM/BILL           ITUNES.COM   IRL   Apple Pay'
         assert transactions[0].reference == '2000000001'
         assert transactions[0].date == datetime(2025, 6, 2)
-        assert transactions[0].counter_account == 'NL58RABO0364024879'
+        assert transactions[0].counter_account == 'NL92RABO0001234567'
     
     def test_parse_file_with_foreign_currency(self, tmp_path):
         """Test parsing with foreign currency transactions."""
@@ -107,8 +107,8 @@ NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,
         csv_file.write_text(csv_content, encoding='utf-8')
         
         account_info = self.parser.get_account_info(str(csv_file))
-        
-        assert account_info['account_number'] == 'NL58RABO0364024879'
+
+        assert account_info['account_number'] == 'NL92RABO0001234567'
         assert account_info['start_date'] == datetime(2025, 6, 2)
         assert account_info['end_date'] == datetime(2025, 6, 5)
     

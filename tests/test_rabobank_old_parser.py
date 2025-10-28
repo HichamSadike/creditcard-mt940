@@ -74,7 +74,7 @@ NL54RABO0310737710;49000000008;28-2-2025;-15.50;STORE PURCHASE;;EUR;"""
         assert transactions[0].description == 'COOKIEBOT B.V.'
         assert transactions[0].reference == '49000000007'
         assert transactions[0].date == datetime(2025, 2, 27)
-        assert transactions[0].counter_account == 'NL54RABO0310737710'
+        assert transactions[0].counter_account == 'NL92RABO0001234567'
     
     def test_parse_file_with_surcharge_merging(self, tmp_path):
         """Test parsing with exchange rate surcharge merging."""
@@ -121,8 +121,8 @@ NL54RABO0310737710;49000000008;28-2-2025;-15.50;STORE PURCHASE;;EUR;"""
         csv_file.write_text(csv_content, encoding='utf-8')
         
         account_info = self.parser.get_account_info(str(csv_file))
-        
-        assert account_info['account_number'] == 'NL54RABO0310737710'
+
+        assert account_info['account_number'] == 'NL92RABO0001234567'
         assert account_info['start_date'] == datetime(2025, 2, 27)
         assert account_info['end_date'] == datetime(2025, 2, 28)
     
