@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from src.creditcard_mt940.processors.transaction_processor import TransactionProcessor
+from src.creditcard_mt940.utils.excel_template import generate_template
 
 
 def apply_numbr_styling():
@@ -241,6 +242,23 @@ def main():
         supported_types = processor.get_supported_file_types(selected_bank)
         st.info(f"**{selected_bank_display}** supports: {', '.join(supported_types).upper()} files")
         
+        # Show template download for Excel mode
+        if selected_bank == 'excel':
+            st.markdown("---")
+            st.subheader("📥 Excel Template")
+            st.markdown(
+                "Download het template, vul je transacties in "
+                "en upload het hieronder."
+            )
+            template_bytes = generate_template()
+            st.download_button(
+                label="Download Template",
+                data=template_bytes,
+                file_name="transacties_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            st.markdown("---")
+
         # Optional account number override with bank-specific defaults
         default_account = "NL91ABNA0417164300" if selected_bank in ['amex', 'ics'] else ""
         account_number = st.text_input(
@@ -310,6 +328,13 @@ NL58RABO0364024879,EUR,4204,Rabo BusinessCard Visa,M. CHOJNACKA,ICTM CONSULTING,
 "Accountnummer","Kaartnummer","Naam op kaart","Transactiedatum","Boekingsdatum","Omschrijving","Valuta","Bedrag","Koers","Bedrag in EUR"
 "00000374942","5534.****.****.5722","K.Z. CHIARETTI","2025-05-05","2025-05-05","Canva* 04506-56920230 Sydney AUS","","","","-11,99"
                     """)
+                elif selected_bank == 'excel':
+                    st.code("""
+Datum;Bedrag;Omschrijving;Tegenrekening;Referentie
+17-02-2026;-49.99;Albert Heijn - Boodschappen;NL91ABNA0417164300;AH-001
+15-02-2026;1500.00;Salaris februari;NL20INGB0001234567;SAL-2026-02
+                    """)
+                    st.info("💡 Download het template via de sidebar voor het juiste formaat.")
                 elif selected_bank == 'amex':
                     st.info("AMEX Excel files should contain transaction data with dates, amounts, and descriptions.")
                 elif selected_bank == 'ics':
@@ -357,7 +382,7 @@ Transactiedatum;Boekingsdatum;Omschrijving;Naam Card-houder;Card nummer;Debit/Cr
                         except UnicodeDecodeError:
                             continue
                     st.dataframe(df.head(10), use_container_width=True)
-                elif selected_bank in ['amex']:
+                elif selected_bank in ['amex', 'excel']:
                     df = pd.read_excel(temp_file_path)
                     # Convert all columns to string to avoid Arrow serialization issues
                     df_display = df.head(10).astype(str)
@@ -497,6 +522,14 @@ Transactiedatum;Boekingsdatum;Omschrijving;Naam Card-houder;Card nummer;Debit/Cr
         - Required columns: `Transactiedatum`, `Omschrijving`, `Debit/Credit`, `Bedrag`
         - Date format: DD-MM-YYYY
         - Business rules: Sign flipping based on Debit/Credit indicator - Debit (D) → negative, Credit (C) → positive
+        
+        #### **Excel (Handmatig)**
+        - File type: Excel (.xlsx/.xls)
+        - Download het template via de sidebar, vul je eigen transacties in en upload het bestand
+        - Verplichte kolommen: `Datum`, `Bedrag`, `Omschrijving`, `Tegenrekening`, `Referentie`
+        - Datumformaat: DD-MM-YYYY (of YYYY-MM-DD)
+        - Negatieve bedragen = uitgaven, positieve bedragen = inkomsten
+        - Tegenrekening en Referentie zijn optioneel maar aanbevolen
         """)
     
     # Render footer
