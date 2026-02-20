@@ -22,28 +22,54 @@ class AmexParser(BaseParser):
     def get_supported_file_types(self) -> List[str]:
         return ["xlsx", "xls"]
     
+    # Known AMEX Excel column mappings (by header name)
+    COLUMN_MAP = {
+        'datum': 'date',
+        'date': 'date',
+        'omschrijving': 'description',
+        'description': 'description',
+        'bedrag': 'amount',
+        'amount': 'amount',
+        'vermeld op uw rekeningoverzicht als': 'statement_description',
+        'adres': 'address',
+        'address': 'address',
+        'aanvullende informatie': 'extra_info',
+        'referentie': 'reference',
+        'reference': 'reference',
+        'plaats': 'city',
+        'postcode': 'postal_code',
+        'land': 'country',
+    }
+
     def parse_file(self, file_path: str) -> List[Transaction]:
         """Parse AMEX Excel file and return list of transactions."""
-        # Read Excel file - try to auto-detect the correct sheet and format
+        # First pass: read without header to scan for the real header row
         try:
-            df = pd.read_excel(file_path, engine='openpyxl')
+            df_raw = pd.read_excel(file_path, engine='openpyxl', header=None)
         except:
-            # Fallback to older Excel format
-            df = pd.read_excel(file_path, engine='xlrd')
+            df_raw = pd.read_excel(file_path, engine='xlrd', header=None)
         
         transactions = []
         
-        # Try to find the header row by looking for common AMEX column patterns
-        header_row = self._find_header_row(df)
-        if header_row is not None:
-            # Re-read with proper header
-            try:
-                df = pd.read_excel(file_path, engine='openpyxl', header=header_row)
-            except:
-                df = pd.read_excel(file_path, engine='xlrd', header=header_row)
+        # Find the header row by looking for known AMEX column names
+        header_row = self._find_header_row(df_raw)
+        
+        # Re-read with proper header (or default row 0 if no special header found)
+        read_header = header_row if header_row is not None else 0
+        try:
+            df = pd.read_excel(file_path, engine='openpyxl', header=read_header)
+        except:
+            df = pd.read_excel(file_path, engine='xlrd', header=read_header)
         
         # Standardize column names (AMEX files might have different column names)
         df.columns = [str(col).strip() for col in df.columns]
+        
+        # Build a mapping from semantic role -> column index using COLUMN_MAP
+        self._col_indices = {}
+        for idx, col_name in enumerate(df.columns):
+            role = self.COLUMN_MAP.get(col_name.lower())
+            if role and role not in self._col_indices:
+                self._col_indices[role] = idx
         
         for index, row in df.iterrows():
             # Skip empty rows
@@ -111,15 +137,31 @@ class AmexParser(BaseParser):
             if amount is None:
                 return None
             
-            # Try to find description column (usually after amount or in a text column)
+            # Get description using column map priority:
+            # 1. "Vermeld op uw rekeningoverzicht als" (statement_description) — what the bookkeeper sees
+            # 2. "Omschrijving" (description) — original transaction description
+            # 3. Fallback: longest non-date/non-amount text column
             description = ""
-            for i in range(len(row)):
-                if i != date_col_idx and i != amount_col_idx and pd.notna(row.iloc[i]):
-                    cell_str = str(row.iloc[i]).strip()
-                    # Skip if it looks like a date or amount
-                    if cell_str and not self._looks_like_date_or_amount(cell_str):
-                        if len(cell_str) > len(description):
-                            description = cell_str
+            col_indices = getattr(self, '_col_indices', {})
+            for role in ('statement_description', 'description'):
+                idx = col_indices.get(role)
+                if idx is not None and idx < len(row) and pd.notna(row.iloc[idx]):
+                    candidate = str(row.iloc[idx]).strip()
+                    if candidate:
+                        description = candidate
+                        break
+            
+            if not description:
+                # Fallback: find longest text column (excluding date, amount, and address)
+                address_idx = col_indices.get('address')
+                for i in range(len(row)):
+                    if i in (date_col_idx, amount_col_idx) or i == address_idx:
+                        continue
+                    if pd.notna(row.iloc[i]):
+                        cell_str = str(row.iloc[i]).strip()
+                        if cell_str and not self._looks_like_date_or_amount(cell_str):
+                            if len(cell_str) > len(description):
+                                description = cell_str
             
             if not description:
                 description = f"AMEX Transaction {index + 1}"
