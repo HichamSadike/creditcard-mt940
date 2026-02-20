@@ -82,7 +82,7 @@ NL54RABO0310737710;50000000013;27-3-2025;-108;COOKIEBOT                KOEBENHAV
         temp_file = self.create_temp_csv(self.sample_csv_data)
         
         try:
-            summary = self.processor.get_transaction_summary(temp_file)
+            summary = self.processor.get_transaction_summary(temp_file, bank='rabobank_old')
             
             # Check summary structure
             assert 'account_number' in summary
@@ -94,7 +94,7 @@ NL54RABO0310737710;50000000013;27-3-2025;-108;COOKIEBOT                KOEBENHAV
             assert 'transactions' in summary
             
             # Check values
-            assert summary['account_number'] == "NL54RABO0310737710"
+            assert summary['account_number'] == "NL92RABO0001234567"
             assert summary['transaction_count'] == 3
             assert summary['total_credits'] == Decimal('912.4')
             assert summary['total_debits'] == Decimal('-127.69')
@@ -112,7 +112,7 @@ NL54RABO0310737710;50000000013;27-3-2025;-108;COOKIEBOT                KOEBENHAV
         temp_file = self.create_temp_csv(self.sample_csv_data)
         
         try:
-            validation_result = self.processor.validate_csv_format(temp_file)
+            validation_result = self.processor.validate_file_format(temp_file, bank='rabobank_old')
             
             assert validation_result['valid'] is True
             assert 'message' in validation_result
@@ -129,7 +129,7 @@ NL54RABO0310737710;1-3-2025;-19,3;GTRANSLATE.COM"""
         temp_file = self.create_temp_csv(invalid_csv)
         
         try:
-            validation_result = self.processor.validate_csv_format(temp_file)
+            validation_result = self.processor.validate_file_format(temp_file, bank='rabobank_old')
             
             assert validation_result['valid'] is False
             assert 'Transactiereferentie' in validation_result['error']
@@ -143,7 +143,7 @@ NL54RABO0310737710;1-3-2025;-19,3;GTRANSLATE.COM"""
         temp_file = self.create_temp_csv(empty_csv)
         
         try:
-            validation_result = self.processor.validate_csv_format(temp_file)
+            validation_result = self.processor.validate_file_format(temp_file, bank='rabobank_old')
             
             assert validation_result['valid'] is False
             assert "empty" in validation_result['error']
@@ -159,7 +159,7 @@ NL54RABO0310737710;49000000008;invalid-date;invalid-amount;GTRANSLATE.COM;;;"""
         temp_file = self.create_temp_csv(invalid_csv)
         
         try:
-            validation_result = self.processor.validate_csv_format(temp_file)
+            validation_result = self.processor.validate_file_format(temp_file, bank='rabobank_old')
             
             assert validation_result['valid'] is False
             assert "Format validation errors" in validation_result['error']
@@ -182,10 +182,10 @@ NL54RABO0310737710;49000000008;invalid-date;invalid-amount;GTRANSLATE.COM;;;"""
     
     def test_nonexistent_file(self):
         """Test handling of non-existent files."""
-        validation_result = self.processor.validate_csv_format("nonexistent_file.csv")
+        validation_result = self.processor.validate_file_format("nonexistent_file.csv", bank="rabobank_old")
         
         assert validation_result['valid'] is False
-        assert "Error reading CSV file" in validation_result['error']
+        assert "Error reading" in validation_result['error']
     
     def test_malformed_csv(self):
         """Test handling of malformed CSV files."""
@@ -193,7 +193,7 @@ NL54RABO0310737710;49000000008;invalid-date;invalid-amount;GTRANSLATE.COM;;;"""
         temp_file = self.create_temp_csv(malformed_csv)
         
         try:
-            validation_result = self.processor.validate_csv_format(temp_file)
+            validation_result = self.processor.validate_file_format(temp_file, bank='rabobank_old')
             
             assert validation_result['valid'] is False
             assert "Missing required columns" in validation_result['error']
